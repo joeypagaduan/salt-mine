@@ -2,11 +2,19 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 0, a setup check page that confirms sign-in, the database and the Archidekt relay all work.
+**Status:** Phase 1 of 6. Sign-in, profiles and friend codes, settings and themes, and decks (from Archidekt or typed in). Games, the life counter, stats, import and playgroups come in later phases.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
-- Sign-in and data: Firebase (Authentication and Firestore). The config in `js/config.js` isn't secret; the database rules in `firestore.rules` decide who can read what.
+- Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html
+- Sign-in and data: Firebase (Authentication and Firestore, with an offline copy on each device). The config in `js/config.js` isn't secret; the database rules in `firestore.rules` decide who can read what, and must be pasted into the Firebase console whenever they change.
 - Archidekt decks: through a small Apps Script relay (code lives outside this repo).
+- Works offline: `sw.js` keeps the app's files on the device.
 - The classic Salt Mine (Apps Script) is separate and unaffected.
+
+## Files
+
+- `index.html`, `css/app.css` (styles from the classic app), `css/beta.css` (additions)
+- `js/app.js` screens and interactions, `js/data.js` Firebase, `js/archidekt.js` deck loading, `js/util.js` helpers and themes, `js/config.js` settings
+- `check.html` and `js/check.js`: the Phase 0 setup check
 
 Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.

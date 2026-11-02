@@ -1,0 +1,25 @@
+/* Additions for Salt Mine Beta, on top of the classic styles in app.css */
+.brand .beta { font-size: .55em; vertical-align: middle; padding: 2px 8px; border-radius: 999px; background: var(--accent-bg, var(--accent)); color: var(--accent-ink); font-family: system-ui, sans-serif; font-weight: 700; letter-spacing: .02em; }
+.hello { display: flex; align-items: center; gap: 14px; }
+.avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 24px; }
+.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 22px; letter-spacing: .02em; display: block; margin-top: 4px; }
+.code.sm { display: inline; font-size: 15px; margin: 0; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); vertical-align: 1px; }
+.welcome { max-width: 460px; margin: 0 auto; padding-top: 28px; text-align: left; }
+.welcome .logo-big { display: block; margin: 0 auto 8px; }
+.welcome h1 { text-align: center; }
+.welcome > .muted { text-align: center; }
+.navbtn small { display: block; font-size: 13px; font-weight: 500; margin-top: 2px; }
+.navbtn:disabled, .btn:disabled { opacity: .55; }
+.status { margin: 10px 0 0; font-weight: 600; color: var(--accent); }
+.deckhero { height: 10px; border-radius: 6px; margin: 4px 0 14px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 16px; }
+.facts dt { color: var(--muted); font-size: 14px; } .facts dd { margin: 0; }
+.folderrow { padding: 12px 14px; }
+.folderrow select { flex: 1; min-width: 0; font: inherit; padding: 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); }
+label.check { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+label.check input { width: 20px; height: 20px; }
+textarea { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 13px; resize: vertical; }
+a.btn { text-decoration: none; color: var(--ink); text-align: center; }
+h2 small.muted { font-size: 15px; font-weight: 500; }
+input[type=search] { width: 100%; font: inherit; font-size: 17px; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 13px; -webkit-appearance: none; appearance: none; }
