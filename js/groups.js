@@ -14,7 +14,9 @@ export const inviteLink = token => BASE + '?join=' + token;
 const prettyCode = t => String(t || '').replace(/^(.{5})(.{5})$/, '$1-$2');
 const cleanCode = t => String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const isAdmin = g => (g.admins || []).indexOf(uid()) !== -1;
-const isOrganizer = g => g.createdBy === uid();
+const ownerOf = g => g.owner || g.createdBy;
+const isOrganizer = g => ownerOf(g) === uid();
+H.personName = u => (G5.people[u] && G5.people[u].name) || '';
 const online = () => { if (navigator.onLine) return true; toast('You\u2019re offline. Try again when you\u2019re back online.', true); return false; };
 const rr = () => { if (S.view === 'groups' || S.view === 'group' || S.view === 'join' || S.view === 'home') H.rerenderKeep(); };
 
@@ -65,6 +67,7 @@ async function loadPeople() {
   if (!need.length) return;
   peopleBusy = true;
   try { Object.assign(G5.people, await D.loadProfiles(need)); } finally { peopleBusy = false; }
+  if (H.regames) H.regames(); // playgroup-mates' names on shared games
   rr();
 }
 /** How many people are waiting for you to approve them. */
@@ -124,7 +127,7 @@ export function viewGroups() {
   else if (!G5.groups.length && !waiting.length) h += '<div class="panel"><p style="margin:0">Playgroups are the people you play with. Make one and share the invite, or join one with a link or code from a friend.</p>' +
     '<p class="muted" style="margin:8px 0 0"><small>Coming next: add playgroup members to your games, so each game shows up for everyone who played once they accept it.</small></p></div>';
   G5.groups.forEach(g => {
-    const n = (g.members || []).length, w = (G5.requests[g.id] || []).length, org = G5.people[g.createdBy];
+    const n = (g.members || []).length, w = (G5.requests[g.id] || []).length, org = G5.people[ownerOf(g)];
     h += '<button class="gcard" data-act="gopen" data-id="' + esc(g.id) + '"><span class="txt"><span class="name">' + esc(g.name) + '</span>' +
       '<span class="muted">' + n + (n === 1 ? ' member' : ' members') + ' \u00b7 ' + (isOrganizer(g) ? 'You organize this' : 'Organized by ' + esc(org ? org.name : '\u2026')) + '</span></span>' +
       (w ? '<span class="badge warn">' + w + ' waiting</span>' : '') + '</button>';
@@ -149,14 +152,17 @@ export function viewGroup() {
         '<span class="acts"><button class="btn sm primary" data-act="gapprove" data-id="' + esc(r.id) + '">Approve</button><button class="btn sm" data-act="gdecline" data-id="' + esc(r.id) + '">Decline</button></span></div>';
     });
   }
-  const members = (g.members || []).slice().sort((a, b) => (b === g.createdBy) - (a === g.createdBy) || (b === me) - (a === me) ||
+  const members = (g.members || []).slice().sort((a, b) => (b === ownerOf(g)) - (a === ownerOf(g)) || (b === me) - (a === me) ||
     String((G5.people[a] || {}).name || '').localeCompare(String((G5.people[b] || {}).name || '')));
   h += '<h2>Members <small class="muted">' + members.length + '</small></h2>';
   members.forEach(m => {
     const p = G5.people[m] || {};
     h += '<div class="panel person">' + avatar(p) + '<span class="txt"><b>' + esc(p.name || 'Loading\u2026') + (m === me ? ' <span class="muted">(you)</span>' : '') + '</b>' +
       '<small class="muted">' + (p.code ? 'Friend code ' + esc(p.code) : '') + '</small></span>' +
-      (m === g.createdBy ? '<span class="pill">Organizer</span>' : admin && m !== me ? '<button class="link danger" data-act="gremove" data-id="' + esc(m) + '">Remove</button>' : '') + '</div>';
+      (m === ownerOf(g) ? '<span class="pill">Organizer</span>' : '') +
+      (m !== me ? '<span class="acts">' + '<button class="link" data-act="glink" data-id="' + esc(m) + '">Link games</button>' +
+        (isOrganizer(g) ? '<button class="link" data-act="gtransfer" data-id="' + esc(m) + '">Make organizer</button>' : '') +
+        (admin && m !== ownerOf(g) ? '<button class="link danger" data-act="gremove" data-id="' + esc(m) + '">Remove</button>' : '') + '</span>' : '') + '</div>';
   });
 
   h += '<h2>Invite</h2>';
@@ -174,7 +180,9 @@ export function viewGroup() {
   }
   h += '<div style="margin-top:22px">' + (isOrganizer(g)
     ? '<button class="link danger" data-act="gdelete">Delete this playgroup</button><p class="muted" style="margin-top:4px"><small>Your games aren\u2019t affected.</small></p>'
-    : '<button class="link danger" data-act="gleave">Leave this playgroup</button>') + '</div>';
+    : '<button class="link danger" data-act="gleave">Leave this playgroup</button>') + '</div>' +
+    (isOrganizer(g) && members.length > 1 ? '<p class="muted" style="margin-top:8px"><small>To leave, first make someone else the organizer.</small></p>' : '') +
+    '<p class="muted" style="margin-top:14px"><small><b>Link games</b> sends your games where you typed someone\u2019s name to their account, for them to accept.</small></p>';
   return h;
 }
 function qrSvg(text) {
@@ -208,7 +216,7 @@ async function attempt(fn, done) {
   catch (e) { toast('That didn\u2019t work: ' + (e.code || e.message), true); }
   rr();
 }
-const ACTS = { groups: 1, gopen: 1, gcreate: 1, gjoincode: 1, gask: 1, gcancel: 1, gapprove: 1, gdecline: 1, gremove: 1, gleave: 1, gdelete: 1, grename: 1, ginviteon: 1, gnewlink: 1, gshare: 1, gcopy: 1 };
+const ACTS = { groups: 1, gopen: 1, gcreate: 1, gjoincode: 1, gask: 1, gcancel: 1, gapprove: 1, gdecline: 1, gremove: 1, gleave: 1, gdelete: 1, grename: 1, ginviteon: 1, gnewlink: 1, gshare: 1, gcopy: 1, gtransfer: 1 };
 /** Taps on the playgroup screens. Returns true when handled (the work itself may carry on after). */
 export function onGroupsAct(act, el) {
   if (!ACTS[act]) return false;
@@ -256,6 +264,13 @@ async function doAct(act, el) {
       const p = G5.people[id] || {};
       if (g && confirm('Remove ' + (p.name || 'this person') + ' from ' + g.name + '? They can ask to join again with an invite.')) await attempt(() => D.removeMember(g.id, id), 'Removed.');
       return true;
+    }
+    case 'gtransfer': {
+      const p = G5.people[id] || {};
+      if (g && isOrganizer(g) && confirm('Make ' + (p.name || 'them') + ' the organizer of ' + g.name + '? They\u2019ll approve new members and can rename or delete it. You stay a member and can\u2019t undo this yourself.')) {
+        await attempt(() => D.transferGroup(g, id, p.name || ''), (p.name || 'They') + ' is the organizer now.');
+      }
+      return;
     }
     case 'gleave':
       if (g && confirm('Leave ' + g.name + '? You can ask to join again with an invite.')) { await attempt(() => D.leaveGroup(g.id, me), 'You left ' + g.name + '.'); H.go('groups'); }

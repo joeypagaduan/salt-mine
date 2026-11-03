@@ -80,3 +80,9 @@ ol.steps { padding-left: 22px; margin: 10px 0; } ol.steps li { margin-bottom: 6p
 /* headers: a long title shortens instead of wrapping the back button */
 header.top .back { white-space: nowrap; flex: none; }
 header.top h3 { min-width: 0; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 8px; }
+/* Phase 5b: shared games */
+.chips button.linked { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.inboxgame select { width: 100%; }
+.inboxbar { border-color: var(--accent); }
+.person .acts { align-items: flex-end; }
+.person .acts .link { padding: 2px 0; font-size: 14px; }

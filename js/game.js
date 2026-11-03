@@ -1,6 +1,6 @@
 // Game logic, ported from classic 1.13: formats, the game being set up (the "draft"), turn order,
 // share text, rematch, and converting between a draft and the saved game record in Firestore.
-import { S, uid } from './state.js';
+import { S, uid, H } from './state.js';
 import { cmdColors } from './commanders.js';
 
 export const WINCONS = ['Combat damage', 'Commander damage', 'Combo', 'Infect / poison', 'Life drain', 'Alternate win card', 'Mill', 'Concession', 'Other'];
@@ -179,7 +179,7 @@ export function rematchFrom(g) {
   ['format', 'set', 'startLife', 'bo3', 'myColors', 'deckId', 'deckName', 'podSize'].forEach(f => { if (g[f] != null && g[f] !== '') d[f] = g[f]; });
   if (d.format === 'Commander') d.format = '';
   d.podSize = +g.podSize || d.podSize;
-  d.opponents = (g.opponents || []).map(o => Object.assign(blankOpp(), { player: o.player || '', c1: o.c1 || '', c2: o.c2 || '', showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '' }));
+  d.opponents = (g.opponents || []).map(o => Object.assign(blankOpp(), { player: o.player || '', uid: o.uid || null, c1: o.c1 || '', c2: o.c2 || '', showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '' }));
   while (d.opponents.length < d.podSize - 1) d.opponents.push(blankOpp());
   if (g.eventId || (g.event && g.event.id)) {
     const id = g.eventId || g.event.id, e = S.events.find(x => x.id === id && x.status === 'Active');
@@ -204,7 +204,7 @@ export function gameToDraft(g) {
     // turn times from the life counter are kept when a game is edited
     myTurnTime: g.myTurnTime || null, myTurnsTaken: g.myTurnsTaken || null,
     opponents: g.opponents.map(o => ({ player: o.player, c1: o.c1, c2: o.c2, seat: o.seat || null, place: o.place || null, showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '',
-      turnTime: o.turnTime || null, turnsTaken: o.turnsTaken || null }))
+      turnTime: o.turnTime || null, turnsTaken: o.turnsTaken || null, uid: o.uid || null, keep: o.keep || null }))
   });
   if (g.format && g.format !== 'Commander') {
     const m = String(g.matchScore || '').match(/^(\d+)-(\d+)$/), ev = S.events.find(x => x.id === g.eventId);
@@ -258,13 +258,26 @@ export function toRecord(d, prev) {
     elimBy: myPlace > 1 ? str(d.elimBy) : '', elimHow: myPlace > 1 ? str(d.elimHow) : '',
     turnTime: num(d.myTurnTime), turnsTaken: num(d.myTurnsTaken)
   };
-  const seats = [me].concat(opps.map(o => ({
-    uid: null, name: str(o.player),
-    deckId: '', deckName: '', c1: cmd ? str(o.c1) : '', c2: cmd ? str(o.c2) : '',
-    colors: cmd ? cmdColors(o.c1, o.c2) : str(o.colors), bracket: null,
-    deck: cmd ? '' : str(o.deck), seat: num(o.seat), place: num(o.place), team: str(o.team),
-    elimBy: '', elimHow: '', turnTime: num(o.turnTime), turnsTaken: num(o.turnsTaken)
-  })));
+  if (prevMe && prevMe.guestName) me.guestName = prevMe.guestName;
+  const seats = [me].concat(opps.map(o => {
+    const seat = {
+      uid: o.uid || null, name: str(o.player),
+      deckId: '', deckName: '', c1: cmd ? str(o.c1) : '', c2: cmd ? str(o.c2) : '',
+      colors: cmd ? cmdColors(o.c1, o.c2) : str(o.colors), bracket: null,
+      deck: cmd ? '' : str(o.deck), seat: num(o.seat), place: num(o.place), team: str(o.team),
+      elimBy: '', elimHow: '', turnTime: num(o.turnTime), turnsTaken: num(o.turnsTaken)
+    };
+    // a playgroup-mate's seat keeps the deck they tagged, their bracket and how they went out (Phase 5b)
+    const k = o.uid && o.keep && o.keep.uid === o.uid ? o.keep : null;
+    if (k) {
+      ['deckId', 'deckName', 'bracket', 'elimBy', 'elimHow'].forEach(f => { if (k[f] != null && k[f] !== '') seat[f] = k[f]; });
+      if (cmd && k.deckId && k.c1 === seat.c1 && k.c2 === seat.c2 && k.colors) seat.colors = k.colors;
+      if (k.name) seat.name = k.name; // their own name, not the one shown here
+    }
+    if (o.uid && o.guestName) seat.guestName = o.guestName;
+    else if (k && k.guestName) seat.guestName = k.guestName;
+    return seat;
+  }));
   return {
     schema: 1, date: d.date || today(), format: cmd ? 'Commander' : String(d.format),
     set: cmd ? '' : str(d.event ? d.event.set : d.set), startLife: startLife(d), bo3: !cmd && !!d.bo3 && two,
@@ -289,13 +302,16 @@ export function fromRecord(id, rec, pending) {
     podSize: rec.podSize || (seats.length > 1 ? seats.length : ''), mySeat: me.seat || null, myPlace: me.place || null, turns: rec.turns || '',
     winCondition: rec.winCondition || '', winOther: rec.winOther || '', elimBy: me.elimBy || '', elimHow: me.elimHow || '',
     resultType: rec.draw ? DRAW_RESULT : (+me.place === 1 ? 'Win' : 'Loss'), draw: !!rec.draw, notes: rec.notes || '',
-    opponents: others.map(s => ({ player: s.name || '', c1: s.c1 || '', c2: s.c2 || '', seat: s.seat || null, place: s.place || null,
-      deck: s.deck || '', colors: s.colors || '', team: rel(s.team), uid: s.uid || null, turnTime: s.turnTime || null, turnsTaken: s.turnsTaken || null })),
+    opponents: others.map(s => ({ player: (s.uid && H.personName && H.personName(s.uid)) || s.name || '', c1: s.c1 || '', c2: s.c2 || '', seat: s.seat || null, place: s.place || null,
+      deck: s.deck || '', colors: s.colors || '', team: rel(s.team), uid: s.uid || null, turnTime: s.turnTime || null, turnsTaken: s.turnsTaken || null,
+      tagged: s.uid ? s.deckName || '' : '', keep: s.uid ? Object.assign({}, s) : null })),
     format: rec.format || 'Commander', set: rec.set || '', startLife: rec.startLife || '', matchScore: rec.matchScore || '',
     bo3: !!rec.bo3, eventId: rec.eventId || '', myColors: rec.format && rec.format !== 'Commander' ? me.colors || '' : '', playDraw: rec.playDraw || '',
     myTurnTime: me.turnTime || null, myTurnsTaken: me.turnsTaken || null,
     // a game someone else logged only counts for you once you accept it (Phase 5)
     accepted: !rec.createdBy || rec.createdBy === uid() || !!(rec.accepted && rec.accepted[uid()]),
+    declined: !!(rec.declined && rec.declined[uid()]), createdBy: rec.createdBy || '', updatedBy: rec.updatedBy || '',
+    mine: !rec.createdBy || rec.createdBy === uid(),
     deleted: !!rec.deleted, locked: !!rec.locked, pending: !!pending,
     created: ts(rec.createdAt), updated: ts(rec.updatedAt), raw: rec
   };
@@ -315,7 +331,7 @@ function remember(name, extra, fn) {
   memo[name] = { games: S.games, extra: extra, val: val };
   return val;
 }
-const counted = () => S.games.filter(g => !g.deleted);
+const counted = () => S.games.filter(g => !g.deleted && g.accepted);
 /** Players you've played with, most often first, with the commanders each has played. */
 export function knownPlayers() { return remember('players', (S.settings.players || []).join('\n'), knownPlayersNow); }
 function knownPlayersNow() {

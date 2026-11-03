@@ -14,6 +14,7 @@ import {
 
 import { homeStatsHtml } from './stats.js';
 import { settingsImportHtml } from './importer.js';
+import { mates, linksFor } from './shared.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
 const app = document.getElementById('app');
@@ -192,10 +193,12 @@ function oppFieldsHtml(o, i) {
 function quickPlayers(i) {
   const d = S.draft;
   if (String(d.opponents[i].player || '').trim()) return '';
-  const used = d.opponents.map(o => String(o.player || '').toLowerCase());
-  const list = knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1).slice(0, 8);
-  if (!list.length) return '';
-  return '<div class="chips">' + list.map(p => '<button type="button" data-act="pickplayer" data-i="' + i + '" data-name="' + esc(p.name) + '">' + esc(p.name) + '</button>').join('') + '</div>';
+  const used = d.opponents.map(o => String(o.player || '').toLowerCase()), usedUids = d.opponents.map(o => o.uid).filter(Boolean);
+  const linked = mates().filter(m => usedUids.indexOf(m.uid) === -1).slice(0, 6);
+  const list = knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1).slice(0, 8 - Math.min(linked.length, 4));
+  if (!list.length && !linked.length) return '';
+  return '<div class="chips">' + linked.map(m => '<button type="button" class="linked" data-act="pickplayer" data-i="' + i + '" data-name="' + esc(m.name) + '" data-uid="' + esc(m.uid) + '">' + esc(m.name) + '</button>').join('') +
+    list.map(p => '<button type="button" data-act="pickplayer" data-i="' + i + '" data-name="' + esc(p.name) + '">' + esc(p.name) + '</button>').join('') + '</div>';
 }
 function c2SlotHtml(o, i) {
   if (o.c2 || o.showC2) {
@@ -220,7 +223,8 @@ export function viewSetup() {
   } else h += myDeckBlock(d);
   if (!team) h += '<div class="field"><span class="label">Players in the pod</span>' + seg('pod', [2, 3, 4, 5, 6], d.podSize) + '</div>';
   const oppSection = (o, i) => {
-    let s = '<section class="panel opp"><h3>' + esc(oppName(o, i)) + '</h3>' +
+    let s = '<section class="panel opp"><h3>' + esc(oppName(o, i)) + (o.uid ? ' <span class="pill">Playgroup</span>' : '') + '</h3>' +
+      (o.uid ? '<p class="muted" style="margin:-4px 0 8px"><small>This game goes to them to accept. Typing a different name unlinks it.</small></p>' : '') +
       '<div class="field ta"><label for="p' + i + '">Player</label><input type="text" id="p' + i + '" data-ta="player" data-i="' + i + '" value="' + esc(o.player) + '" autocomplete="off" placeholder="Type a name"><ul class="ta-list" hidden></ul>' + quickPlayers(i) + '</div>';
     if (cmd) s += '<div class="field ta"><label for="c' + i + '">Commander</label><input type="text" id="c' + i + '" data-ta="c1" data-i="' + i + '" value="' + esc(o.c1) + '" autocomplete="off" placeholder="Type a commander"><ul class="ta-list" hidden></ul></div>' +
       '<div id="c2slot-' + i + '">' + c2SlotHtml(o, i) + '</div>';
@@ -321,7 +325,8 @@ export function viewEnd() {
 
 /* ---------- Recent games ---------- */
 const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>';
-const liveGames = () => S.games.filter(g => !g.deleted);
+// games someone else logged show up once you accept them (until then they wait in your inbox)
+const liveGames = () => S.games.filter(g => !g.deleted && g.accepted);
 const gameById = id => S.games.find(g => g.gameId === id);
 export function viewRecent() {
   const sel = S.sel, list = liveGames(), shown = list.slice(0, S.recentShown);
@@ -347,7 +352,8 @@ export function viewRecent() {
       '<span class="place' + (+g.myPlace === 1 && !g.draw ? ' first' : '') + '">' + esc(place) + '</span>' +
       '<span class="txt"><span class="name">' + esc(g.deckName || (other ? g.format : 'Unknown deck')) + '</span><span class="sub">' + esc(niceDate(g.date)) +
       (other ? ', ' + esc(g.format) + (g.matchScore ? ' ' + esc(g.matchScore) : '') : (g.podSize ? ', ' + esc(g.podSize) + ' players' : '')) +
-      (g.pending ? ' <span class="pill sync">Not synced yet</span>' : '') + (g.locked ? ' <span class="pill">Locked</span>' : '') + '</span>' +
+      (g.pending ? ' <span class="pill sync">Not synced yet</span>' : '') + (g.locked ? ' <span class="pill">Locked</span>' : '') +
+      (g.updatedBy && g.createdBy && g.updatedBy !== g.createdBy ? ' <span class="pill sync">Edited by ' + esc(g.updatedBy === uid() ? 'you' : (H.personName && H.personName(g.updatedBy)) || 'a player') + '</span>' : '') + '</span>' +
       (opps ? '<span class="vs">vs ' + esc(opps) + '</span>' : '') + '</span></button>';
   });
   if (total > shown.length) h += '<button class="btn" style="margin-top:10px" data-act="recentmore"' + (list.length > shown.length ? '' : ' disabled') + '>' +
@@ -359,7 +365,7 @@ export function viewRecent() {
       (lockedFor(g) ? '' : '<button class="btn" data-act="menuedit">Edit game</button>') +
       '<button class="btn" data-act="menurematch">Rematch</button>' +
       '<button class="btn" data-act="menushare">Share result</button>' +
-      (lockedFor(g) ? '' : '<button class="btn danger" data-act="menudel">Delete game</button>') +
+      (lockedFor(g) ? '' : g.mine ? '<button class="btn danger" data-act="menudel">Delete game</button>' : '<button class="btn danger" data-act="menuleave">That wasn\u2019t me</button>') +
       '<button class="btn" data-act="menusel">Select more games</button>' +
       '<button class="btn" data-act="menuclose">Cancel</button></div></div>';
   }
@@ -451,9 +457,12 @@ function suggest(kind, i, q) {
   }
   if (kind === 'player') {
     const used = d.opponents.filter((x, k) => k !== i).map(x => String(x.player).toLowerCase());
-    return knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1 && (!ql || p.name.toLowerCase().indexOf(ql) !== -1))
+    const usedUids = d.opponents.filter((x, k) => k !== i).map(x => x.uid).filter(Boolean);
+    const linked = mates().filter(m => usedUids.indexOf(m.uid) === -1 && (!ql || m.name.toLowerCase().indexOf(ql) !== -1))
+      .map(m => ({ label: m.name, value: m.name, uid: m.uid, sub: 'Playgroup: ' + m.group }));
+    return linked.slice(0, 4).concat(knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1 && (!ql || p.name.toLowerCase().indexOf(ql) !== -1))
       .sort((a, b) => (b.name.toLowerCase().startsWith(ql) - a.name.toLowerCase().startsWith(ql)) || b.count - a.count)
-      .slice(0, 8).map(p => ({ label: p.name, value: p.name, sub: p.count ? p.count + (p.count === 1 ? ' game' : ' games') : '' }));
+      .slice(0, 8).map(p => ({ label: p.name, value: p.name, sub: p.count ? p.count + (p.count === 1 ? ' game' : ' games') : '' }))).slice(0, 10);
   }
   if (kind === 'c1') {
     const items = [];
@@ -495,7 +504,7 @@ function setField(kind, i, value, picked, item) {
     if (picked && item && item.colors && !o.colors) o.colors = item.colors;
     touch(); if (picked) H.rerenderKeep(); return;
   }
-  if (kind === 'player') o.player = value;
+  if (kind === 'player') { o.player = value; o.uid = picked && item && item.uid ? item.uid : null; }
   if (kind === 'c1') { o.c1 = value; if (picked && item && item.c2 !== undefined) { o.c2 = item.c2 || ''; o.showC2 = !!item.c2; } }
   if (kind === 'c2') o.c2 = value;
   touch();
@@ -556,7 +565,9 @@ export function afterRender() {
 /* ---------- saving ---------- */
 function saveGame(btn) {
   const d = S.draft;
-  if (isCmd(d) && !d.deckId) return toast('Choose your deck first.', true);
+  const prev0 = d.gameId ? gameById(d.gameId) : null;
+  // in a game someone else logged, your seat can stay as they logged it (tagging your deck is optional)
+  if (isCmd(d) && !d.deckId && !(prev0 && !prev0.mine)) return toast('Choose your deck first.', true);
   if (!isCmd(d) && d.bo3 && sides(d) === 2) {
     if (d.matchW == null || d.matchL == null) return toast('Choose how many games each side won.', true);
     matchToPlaces(d);
@@ -571,6 +582,9 @@ function saveGame(btn) {
   const failed = err => toast('Couldn\u2019t save that game: ' + ((err && (err.code || err.message)) || err), true);
   if (edited) D.updateGame(me, id, prev.doc || prev.raw, rec, failed);
   else D.createGame(me, id, rec, failed);
+  // playgroup-mates in the game: added one at a time, so it reaches their inbox
+  const links = linksFor(rec, prev);
+  if (links.length) D.linkPlayers(me, id, links, failed);
   if (!isCmd(d) && d.event && d.event.id && !d.event.existing) {
     D.saveEvent(me, d.event.id, { date: d.event.date || d.date, format: d.format, set: String(d.event.set || '').trim(), store: String(d.event.store || '').trim(),
       colors: d.myColors || '', status: 'Active', createdAt: D.serverTimestamp() });
@@ -583,7 +597,9 @@ function saveGame(btn) {
 }
 function hide(ids) {
   if (ids.map(gameById).some(g => g && g.cached)) { stillLoading({ cached: true }); return -1; }
-  const items = ids.map(gameById).filter(g => g && !lockedFor(g)).map(g => ({ id: g.gameId, prev: g.doc || g.raw }));
+  // only games you logged can be deleted (it hides them for everyone); for others, use "That wasn't me"
+  const items = ids.map(gameById).filter(g => g && !lockedFor(g) && g.mine).map(g => ({ id: g.gameId, prev: g.doc || g.raw }));
+  if (items.length < ids.length) toast('Games someone else logged were skipped. Use \u201CThat wasn\u2019t me\u201D on those instead.', true);
   if (!items.length) return 0;
   D.hideGames(uid(), items, err => toast('Couldn\u2019t delete: ' + ((err && (err.code || err.message)) || err), true));
   if (S.draft && S.draft.gameId && ids.indexOf(S.draft.gameId) !== -1) dropDraft(); // you were editing one of them
@@ -614,7 +630,7 @@ export function onAct(act, el) {
     }
     case 'pickernew': S.picker = false; H.newDeck(true); return true;
     case 'pickplayer': {
-      const i = +el.dataset.i; d.opponents[i].player = el.dataset.name; touch(); K();
+      const i = +el.dataset.i; d.opponents[i].player = el.dataset.name; d.opponents[i].uid = el.dataset.uid || null; touch(); K();
       const c = document.getElementById(isCmd() ? 'c' + i : 'od' + i); if (c && !(isCmd() ? d.opponents[i].c1 : d.opponents[i].deck)) c.focus(); return true;
     }
     case 'addc2': d.opponents[+el.dataset.i].showC2 = true; K(); { const f = document.getElementById('d' + el.dataset.i); if (f) f.focus(); } return true;

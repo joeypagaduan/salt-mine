@@ -4,6 +4,12 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
     function me(uid) { return signedIn() && request.auth.uid == uid; }
     function isAppOwner() { return signedIn() && request.auth.uid == 'NiZxyuiR2Dc1hQDOVCyXBGS2ax23'; }
+    // playgroups (used by games and playgroups below)
+    function groupAt(gid) { return get(/databases/$(database)/documents/groups/$(gid)).data; }
+    function groupAfter(gid) { return getAfter(/databases/$(database)/documents/groups/$(gid)).data; }
+    function isMemberOf(g) { return signedIn() && request.auth.uid in g.members; }
+    function isAdminOf(g) { return signedIn() && request.auth.uid in g.admins; }
+    function ownerOf(g) { return g.get('owner', g.createdBy); }
 
     // Your private data: settings, decks, events and the game in progress. Only you can read or write it.
     match /users/{uid}/{document=**} {
@@ -34,31 +40,54 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Games: one record per game. Only the accounts in its players list can see it (for now, just whoever logged it;
-    // friends get added in Phase 5, and a game only counts for them once they accept it).
+    // Games: one record per game. Only the accounts in its players list can see it. A game someone else logged only
+    // counts for you once you accept it (Phase 5b).
     function isPlayerIn(data) { return signedIn() && request.auth.uid in data.players; }
     function gameDoc(gameId) { return get(/databases/$(database)/documents/games/$(gameId)).data; }
+    function marks(data, field) { return data.get(field, {}); }
+    function onlyMyMark(field) {
+      return marks(request.resource.data, field).diff(marks(resource.data, field)).affectedKeys().hasOnly([request.auth.uid]);
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function playersBefore() { return resource.data.players.toSet(); }
+    function playersAfter() { return request.resource.data.players.toSet(); }
+    // taking yourself out of a game you'd accepted ("That wasn't me")
+    function leaving() {
+      return playersAfter() == playersBefore().difference([request.auth.uid].toSet())
+        && marks(resource.data, 'accepted').get(request.auth.uid, false) == true;
+    }
+    // turning a typed-in name into a playgroup-mate: one person at a time, through a playgroup you're both in
+    function linking() {
+      return request.resource.data.linkedUid is string && request.resource.data.linkVia is string
+        && !(request.resource.data.linkedUid in resource.data.players)
+        && playersAfter() == playersBefore().union([request.resource.data.linkedUid].toSet())
+        && groupAt(request.resource.data.linkVia).members.hasAll([request.auth.uid, request.resource.data.linkedUid]);
+    }
     match /games/{gameId} {
       allow read: if isPlayerIn(resource.data);
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.players is list
-        && request.auth.uid in request.resource.data.players
-        && request.resource.data.players.size() <= 8
+        && request.resource.data.players == [request.auth.uid]
         && request.resource.data.accepted.keys().hasOnly([request.auth.uid])
         && request.resource.data.locked == false
         && request.resource.data.deleted == false
         && request.resource.data.seats is list && request.resource.data.seats.size() <= 8;
-      // Anyone who played can edit. Only the app's owner can change who played or lock a game, and a locked game
-      // can only be changed by the owner. You can only accept for yourself.
+      // Anyone who played can edit once they've accepted the game (or while accepting it). Someone who hasn't
+      // accepted can only accept or decline. Players can link a typed-in name to a playgroup-mate, or take themselves
+      // out; only the app's owner can otherwise change who played, or lock a game. You only accept or decline for yourself.
       allow update: if isPlayerIn(resource.data)
         && (resource.data.locked == false || isAppOwner())
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
-        && (request.resource.data.players == resource.data.players || isAppOwner())
+        && request.resource.data.createdBy in request.resource.data.players
+        && request.resource.data.players.size() <= 8
         && (request.resource.data.locked == resource.data.locked || isAppOwner())
-        && request.resource.data.accepted.diff(resource.data.accepted).affectedKeys().hasOnly([request.auth.uid])
-        && request.resource.data.seats is list && request.resource.data.seats.size() <= 8;
+        && onlyMyMark('accepted') && onlyMyMark('declined')
+        && request.resource.data.seats is list && request.resource.data.seats.size() <= 8
+        && (marks(request.resource.data, 'accepted').get(request.auth.uid, false) == true
+          || changed().hasOnly(['accepted', 'declined', 'updatedAt', 'updatedBy'])
+          || leaving())
+        && (request.resource.data.players == resource.data.players || isAppOwner() || leaving() || linking());
       // Games are never erased: "Delete" hides them, so they can be restored.
       allow delete: if false;
 
@@ -71,17 +100,14 @@ service cloud.firestore {
       }
     }
 
-    // Playgroups (Phase 5a). Members can see their playgroup. Only admins change it (the organizer, who made it,
-    // is always one); a member can only take themselves out. Only the organizer can delete it.
-    function groupAt(gid) { return get(/databases/$(database)/documents/groups/$(gid)).data; }
-    function groupAfter(gid) { return getAfter(/databases/$(database)/documents/groups/$(gid)).data; }
-    function isMemberOf(g) { return signedIn() && request.auth.uid in g.members; }
-    function isAdminOf(g) { return signedIn() && request.auth.uid in g.admins; }
+    // Playgroups (Phase 5a). Members can see their playgroup. Only admins change it (the organizer is always one);
+    // a member can only take themselves out. The organizer starts as whoever made it; only the organizer can hand that
+    // role to another member, or delete the playgroup.
     function groupOk(d) {
-      return d.keys().hasOnly(['name', 'createdBy', 'createdAt', 'updatedAt', 'members', 'admins', 'invite', 'inviteOn'])
+      return d.keys().hasOnly(['name', 'createdBy', 'createdAt', 'updatedAt', 'members', 'admins', 'invite', 'inviteOn', 'owner'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 40
         && d.members is list && d.members.size() <= 50
-        && d.admins is list && d.members.hasAll(d.admins) && d.admins.hasAll([d.createdBy])
+        && d.admins is list && d.members.hasAll(d.admins) && d.admins.hasAll([ownerOf(d)])
         && d.invite is string && d.inviteOn is bool;
     }
     match /groups/{gid} {
@@ -93,11 +119,12 @@ service cloud.firestore {
       allow update: if groupOk(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.createdAt == resource.data.createdAt
+        && (ownerOf(request.resource.data) == ownerOf(resource.data) || request.auth.uid == ownerOf(resource.data))
         && (isAdminOf(resource.data)
           || (isMemberOf(resource.data)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt'])
             && request.resource.data.members.toSet() == resource.data.members.toSet().difference([request.auth.uid].toSet())));
-      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+      allow delete: if signedIn() && ownerOf(resource.data) == request.auth.uid;
 
       // Asking to join: only for yourself, and only with an invite that's turned on for this playgroup.
       // You and the playgroup's admins can see the request; either can withdraw or decline it.
@@ -107,6 +134,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['uid', 'name', 'code', 'photo', 'token', 'at'])
           && request.resource.data.uid == uid
           && request.resource.data.token is string
+          && exists(/databases/$(database)/documents/invites/$(request.resource.data.token))
           && get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.gid == gid
           && get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.on == true;
         allow update: if false;

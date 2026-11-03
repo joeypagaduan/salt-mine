@@ -11,6 +11,7 @@ import * as G from './gameui.js';
 import * as ST from './stats.js';
 import * as IM from './importer.js';
 import * as GR from './groups.js';
+import * as SH from './shared.js';
 GR.takeJoinFromUrl();
 
 const ICON = {
@@ -90,7 +91,7 @@ function startWatching(user) {
     S.gamesLoaded = true;
     S.events = withRecords(S.eventsRaw);
     G.saveGamesCache();
-    softRender(['home', 'recent', 'stats']);
+    softRender(['home', 'recent', 'stats', 'inbox']);
   }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent', 'stats']); }));
   S.unsub.push(D.watchEvents(user.uid, list => {
     if (!list) return;
@@ -100,6 +101,12 @@ function startWatching(user) {
   S.unsub.push(D.watchDraft(user.uid, G.onRemoteDraft));
   GR.watchGroupsFor(user).forEach(u => S.unsub.push(u));
 }
+// once playgroup-mates' names arrive, shared games show them instead of the names first typed
+G.H.regames = () => {
+  if (!S.games.some(g => g.raw && (g.raw.seats || []).some(x => x.uid && x.uid !== uid()))) return;
+  S.games = sortGames(S.games.map(g => { if (!g.raw) return g; const n = fromRecord(g.gameId, g.raw, g.pending); n.doc = g.doc; return n; }));
+  softRender(['home', 'recent', 'stats', 'inbox']);
+};
 /** Redraws once per frame at most, however many updates arrive together (a sync can bring many at once). */
 let softRaf = 0, softViews = {};
 function softRender(views) {
@@ -121,7 +128,7 @@ function go(view) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
@@ -174,14 +181,14 @@ function viewHome() {
   let h = '<header class="top"><span class="brand"><img src="' + LOGO + '" alt=""><h1>Salt Mine <span class="beta">Beta</span></h1></span><button class="icon gear" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>';
   h += '<section class="homecard hello">' + avatar(p, S.user) + '<div><b class="cond" style="font-size:24px">Hi, ' + esc(p.name || 'there') + '</b>' +
     '<p class="muted" style="margin:2px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b>' + (D.isOwner(S.user && S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div></section>';
-  h += G.homeGameHtml();
+  h += G.homeGameHtml() + SH.homeInboxHtml();
   const n = G.gameCount();
   h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (n == null ? 'Loading\u2026' : n + (n === 1 ? ' game' : ' games')) + '</small></button>' +
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
     '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
     '<button class="navbtn" data-act="groups">' + ICON.people + 'Playgroups<small class="muted">' + esc(GR.homeBlurb()) + '</small>' +
     (GR.waitingCount() ? '<span class="dot" aria-hidden="true"></span>' : '') + '</button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 5 of 6. Playgroups are here; adding them to games comes next. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 5 of 6. Add playgroup-mates to your games and they get them to accept. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -362,7 +369,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || SH.onSharedAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -451,7 +458,7 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('change', e => {
   const t = e.target;
-  if (ST.onStatsChange(t) || IM.onImportChange(t) || G.onChangeG(t) || G.onSettingsChange(t)) return;
+  if (ST.onStatsChange(t) || SH.onSharedChange(t) || IM.onImportChange(t) || G.onChangeG(t) || G.onSettingsChange(t)) return;
   if (t.id === 'pname') {
     const name = t.value.trim(); if (!name || name === S.profile.name) return;
     S.profile.name = name; store('smb_profile_' + uid(), S.profile);

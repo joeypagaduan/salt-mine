@@ -234,7 +234,7 @@ export function watchJoins(uid, cb) {
 }
 export async function createGroup(uid, name, byName) {
   const ref = doc(collection(db, 'groups')), token = newInviteCode(), b = writeBatch(db);
-  b.set(ref, { name: name, createdBy: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), members: [uid], admins: [uid], invite: token, inviteOn: true });
+  b.set(ref, { name: name, createdBy: uid, owner: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), members: [uid], admins: [uid], invite: token, inviteOn: true });
   b.set(doc(db, 'invites', token), { gid: ref.id, name: name, byName: byName, on: true, createdAt: serverTimestamp() });
   await b.commit();
   return ref.id;
@@ -306,4 +306,56 @@ export async function loadProfiles(uids) {
   const out = {};
   await Promise.all(uids.map(u => getDoc(doc(db, 'profiles', u)).then(s => { if (s.exists()) out[u] = s.data(); }).catch(() => {})));
   return out;
+}
+
+/** Hands the organizer role to another member (only the organizer can). The invite's "organized by" changes first. */
+export async function transferGroup(g, to, toName) {
+  if (g.invite) await setDoc(doc(db, 'invites', g.invite), { byName: toName }, { merge: true });
+  await updateDoc(doc(db, 'groups', g.id), { owner: to, admins: [to], updatedAt: serverTimestamp() });
+}
+
+/* ---------- shared games (Phase 5b) ----------
+ * games/{id} also has: declined {uid: true}, linkedUid and linkVia (the last person linked, and the playgroup you share).
+ * A linked seat keeps the name it was typed in as, in guestName.
+ */
+/** Adds playgroup-mates to a game, one at a time (the rules check each one). links: [{ uid, via }] */
+export function linkPlayers(uid, id, links, errCb) {
+  links.forEach(l => updateDoc(doc(db, 'games', id), { players: arrayUnion(l.uid), linkedUid: l.uid, linkVia: l.via, updatedAt: serverTimestamp(), updatedBy: uid }).catch(onErr(errCb)));
+}
+/** Accepting games someone else logged. items: [{ id, seats? }] (seats when you tagged your deck). */
+export async function acceptGames(uid, items) {
+  for (let i = 0; i < items.length; i += 300) {
+    const b = writeBatch(db);
+    items.slice(i, i + 300).forEach(it => {
+      const patch = { ['accepted.' + uid]: true, ['declined.' + uid]: deleteField(), updatedAt: serverTimestamp() };
+      if (it.seats) patch.seats = it.seats;
+      b.update(doc(db, 'games', it.id), patch);
+    });
+    await b.commit();
+  }
+}
+export async function declineGames(uid, ids) {
+  for (let i = 0; i < ids.length; i += 300) {
+    const b = writeBatch(db);
+    ids.slice(i, i + 300).forEach(id => b.update(doc(db, 'games', id), { ['declined.' + uid]: true, ['accepted.' + uid]: deleteField(), updatedAt: serverTimestamp() }));
+    await b.commit();
+  }
+}
+/** "That wasn't me": your seat goes back to a typed-in name, and the game leaves your list. */
+export async function leaveGame(uid, id, prev, seats) {
+  // not an edit to the game itself, so it doesn't show as "Edited by" you
+  const b = writeBatch(db);
+  b.set(doc(collection(db, 'games', id, 'history')), { savedAt: serverTimestamp(), savedBy: uid, why: 'leave', data: prev });
+  b.update(doc(db, 'games', id), { seats: seats, players: arrayRemove(uid), ['accepted.' + uid]: deleteField(), ['declined.' + uid]: deleteField(), updatedAt: serverTimestamp() });
+  await b.commit();
+}
+/** Links a typed-in name to a playgroup-mate across many games. items: [{ id, prev, seats }] */
+export async function linkGuestGames(uid, to, via, items, onProgress) {
+  let done = 0;
+  for (let i = 0; i < items.length; i += 150) {
+    const b = writeBatch(db), chunk = items.slice(i, i + 150);
+    chunk.forEach(it => historyAndUpdate(b, uid, it.id, it.prev, { seats: it.seats, players: arrayUnion(to), linkedUid: to, linkVia: via }, 'link'));
+    await b.commit();
+    done += chunk.length; if (onProgress) onProgress(done);
+  }
 }
