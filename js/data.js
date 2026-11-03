@@ -5,7 +5,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/fireba
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, onSnapshot,
-  collection, writeBatch, serverTimestamp, deleteField, query, where }
+  collection, writeBatch, serverTimestamp, deleteField, query, where, Timestamp }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
 const app = initializeApp(firebaseConfig);
@@ -145,6 +145,37 @@ export function hideGames(uid, items, errCb) {
     items.slice(i, i + 200).forEach(it => historyAndUpdate(b, uid, it.id, it.prev, { deleted: true, deletedAt: serverTimestamp() }, 'delete'));
     b.commit().catch(onErr(errCb));
   }
+}
+
+/**
+ * Games imported from classic (Phase 4), a batch at a time, waiting for each to reach the database.
+ * New ones (no prev) are created with the classic game's created time, so games from the same day stay in order.
+ * Ones fixed in classic (prev set) are updated, keeping the version before in the game's history.
+ * items: [{ id, rec, source, created?, prev? }]
+ */
+export async function importGames(uid, items, onProgress) {
+  let done = 0;
+  for (let i = 0; i < items.length; i += 150) {
+    const b = writeBatch(db), chunk = items.slice(i, i + 150);
+    chunk.forEach(it => {
+      const meta = { source: it.source, importedAt: serverTimestamp() };
+      if (it.prev) historyAndUpdate(b, uid, it.id, it.prev, Object.assign({}, it.rec, meta), 'import');
+      else b.set(doc(db, 'games', it.id), Object.assign({}, it.rec, meta, {
+        createdBy: uid, createdAt: Timestamp.fromMillis(it.created || Date.now()), updatedAt: serverTimestamp(), updatedBy: uid,
+        players: [uid], accepted: { [uid]: true }, deleted: false, locked: false
+      }));
+    });
+    await b.commit();
+    done += chunk.length;
+    if (onProgress) onProgress(done);
+  }
+}
+/** Events (prereleases) from classic, keeping their classic IDs so their games find them. */
+export async function importEvents(uid, events) {
+  const b = writeBatch(db);
+  events.forEach(e => b.set(doc(db, 'users', uid, 'events', e.id), { date: e.date, format: e.format, set: e.set, store: e.store, colors: e.colors,
+    status: e.status, createdAt: e.created ? Timestamp.fromMillis(e.created) : serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true }));
+  await b.commit();
 }
 
 /* ---------- events (prereleases) ---------- */

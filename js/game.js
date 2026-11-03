@@ -192,9 +192,13 @@ export function rematchFrom(g) {
 
 /** A saved game back into the editor. */
 export function gameToDraft(g) {
+  // games imported from classic's old spreadsheet may not say how many played: guess enough seats for your finish,
+  // and save it as still unknown unless you change it
+  const cmdGame = !g.format || g.format === 'Commander';
+  const pod = +g.podSize || Math.max(cmdGame ? 4 : 2, g.opponents.length + 1, +g.myPlace || 0, +g.mySeat || 0);
   const d = Object.assign(newDraft(), {
-    stage: 'ending', gameId: g.gameId, date: g.date, deckId: g.deckId, deckName: g.deckName,
-    podSize: +g.podSize || Math.max(2, g.opponents.length + 1), mySeat: g.mySeat || null, myPlace: g.myPlace || null,
+    stage: 'ending', gameId: g.gameId, date: g.date, deckId: g.deckId, deckName: g.deckName, podGuess: +g.podSize ? null : pod,
+    podSize: pod, mySeat: g.mySeat || null, myPlace: g.myPlace || null,
     turns: g.turns || '', notes: g.notes || '', winCondition: g.winCondition || '', winOther: g.winOther || '',
     elimBy: g.elimBy || '', elimHow: g.elimHow || '', draw: g.resultType === DRAW_RESULT,
     // turn times from the life counter are kept when a game is edited
@@ -228,7 +232,11 @@ export function toRecord(d, prev) {
   const cmd = isCmd(d), two = sides(d) === 2, ts = teamSize(d), myPlace = +d.myPlace;
   const deck = cmd ? deckById(d.deckId) : null;
   const prevMe = prev && prev.raw && (prev.raw.seats || []).find(s => s.uid === uid());
-  const opps = d.opponents.map(o => Object.assign({}, o));
+  const podUnknown = !!d.podGuess && +d.podSize === +d.podGuess;
+  // with the pod size still unknown, the empty seats added for editing aren't saved
+  const keepMe = !!(prevMe && prev.deckId === d.deckId);
+  const opps = d.opponents.filter(o => !podUnknown || String(o.player || '').trim() || String(o.c1 || '').trim() || String(o.deck || '').trim() || o.place)
+    .map(o => Object.assign({}, o));
   let matchScore = '', playDraw = '';
   if (!cmd) {
     matchScore = d.bo3 && two && d.matchW != null && d.matchL != null ? d.matchW + '-' + d.matchL : '';
@@ -241,8 +249,9 @@ export function toRecord(d, prev) {
   const me = {
     uid: uid(), name: myName() || 'You',
     deckId: cmd ? str(d.deckId) : '', deckName: cmd ? str(deck ? deck.name : d.deckName) : str(deckLabel(d)),
-    c1: cmd && deck ? str(deck.c1) : '', c2: cmd && deck ? str(deck.c2) : '',
-    colors: cmd ? (deck ? deck.colors || 'C' : '') : str(d.myColors),
+    // a deck that isn't in your decks (yet) keeps the commanders and colors the game already had
+    c1: cmd ? str(deck ? deck.c1 : keepMe ? prevMe.c1 : '') : '', c2: cmd ? str(deck ? deck.c2 : keepMe ? prevMe.c2 : '') : '',
+    colors: cmd ? (deck ? deck.colors || 'C' : keepMe ? str(prevMe.colors) : '') : str(d.myColors),
     // the bracket the deck had when the game was played: kept as it was when you edit the game later
     bracket: prevMe && prev.deckId === d.deckId ? nul(prevMe.bracket) : (cmd && deck && deck.bracket !== '' && deck.bracket != null ? deck.bracket : null),
     deck: '', seat: num(d.mySeat), place: myPlace || null, team: ts ? 'A' : '',
@@ -260,7 +269,7 @@ export function toRecord(d, prev) {
     schema: 1, date: d.date || today(), format: cmd ? 'Commander' : String(d.format),
     set: cmd ? '' : str(d.event ? d.event.set : d.set), startLife: startLife(d), bo3: !cmd && !!d.bo3 && two,
     matchScore: matchScore, playDraw: playDraw, eventId: !cmd && d.event && d.event.id ? String(d.event.id) : '',
-    podSize: +d.podSize || seats.length, turns: num(d.turns), winCondition: str(d.winCondition),
+    podSize: podUnknown ? null : (+d.podSize || seats.length), turns: num(d.turns), winCondition: str(d.winCondition),
     winOther: d.winCondition === 'Other' ? str(d.winOther) : '', draw: !!d.draw, notes: str(d.notes), seats: seats
   };
 }
@@ -276,7 +285,8 @@ export function fromRecord(id, rec, pending) {
   return {
     gameId: id, date: rec.date || '', deckId: me.deckId || '', deckName: me.deckName || '', bracket: me.bracket == null ? '' : me.bracket,
     c1: me.c1 || '', c2: me.c2 || '', colors: me.colors || '',
-    podSize: rec.podSize || seats.length, mySeat: me.seat || null, myPlace: me.place || null, turns: rec.turns || '',
+    // games imported from classic's old spreadsheet may not say how many played
+    podSize: rec.podSize || (seats.length > 1 ? seats.length : ''), mySeat: me.seat || null, myPlace: me.place || null, turns: rec.turns || '',
     winCondition: rec.winCondition || '', winOther: rec.winOther || '', elimBy: me.elimBy || '', elimHow: me.elimHow || '',
     resultType: rec.draw ? DRAW_RESULT : (+me.place === 1 ? 'Win' : 'Loss'), draw: !!rec.draw, notes: rec.notes || '',
     opponents: others.map(s => ({ player: s.name || '', c1: s.c1 || '', c2: s.c2 || '', seat: s.seat || null, place: s.place || null,

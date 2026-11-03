@@ -9,6 +9,7 @@ import { fromRecord, sortGames, withRecords } from './game.js';
 import { ensureCommanders } from './commanders.js';
 import * as G from './gameui.js';
 import * as ST from './stats.js';
+import * as IM from './importer.js';
 
 const ICON = {
   gear: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -19,6 +20,9 @@ const ICON = {
 };
 const TYPE_ORDER = ['Scratch', 'Upgraded', 'Pre-Con'];
 const TYPE_NAMES = { Scratch: 'From scratch', Upgraded: 'Upgraded', 'Pre-Con': 'Pre-cons' };
+// what a folder can count as (as in classic, plus the kinds classic kept as typed names)
+const FOLDER_KINDS = ['Scratch', 'Upgraded', 'Pre-Con', 'Archived', 'Working', 'For Others', 'Shared', 'Unsorted'];
+const KIND_NAMES = Object.assign({ 'For Others': 'For others' }, TYPE_NAMES);
 const LOGO = 'icons/icon-192.png';
 
 const app = document.getElementById('app');
@@ -112,7 +116,7 @@ function go(view) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
@@ -171,7 +175,7 @@ function viewHome() {
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
     '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
     '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 3 of 6. Importing your classic games and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 4 of 6. Bring your classic games over in Settings > Data. Playgroups arrive in a later update. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -283,14 +287,22 @@ function viewSettings() {
   h += '<details class="collapse" id="archsec"' + (S.open.archsec ? ' open' : '') + '><summary><h2 style="display:inline">Archidekt</h2></summary>' +
     '<div class="field"><label for="suser">Archidekt username</label><input id="suser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(a.username || '') + '"></div>' +
     '<div class="field"><label for="sextra">Extra deck links (optional)</label><textarea id="sextra" rows="2" placeholder="Unlisted decks: paste their Archidekt links">' + esc((a.extraIds || []).map(id => 'https://archidekt.com/decks/' + id).join('\n')) + '</textarea></div>' +
-    '<button class="btn" data-act="savearch">Save and refresh decks</button>';
-  const fl = folders(), fids = Object.keys(fl).sort((x, y) => fl[x].name.localeCompare(fl[y].name));
+    '<button class="btn" data-act="savearch">Save and refresh decks</button>' +
+    '<button class="link" style="display:block;margin-top:10px" data-act="reloadall">Reload every deck</button>' +
+    '<p class="muted" style="margin-top:4px"><small>Loads every deck again in full, in case one shows the wrong folder, commander or bracket.' +
+    (a.lastSummary ? ' Last refresh: ' + esc(a.lastSummary) : '') + '</small></p>';
+  // folders in the picker first, then the rest, your Archidekt home folder last; each with how many decks it holds now
+  const fl = folders(), counts = {};
+  S.decks.forEach(d => { if (d.source !== 'typed' && d.status !== 'missing' && d.folderId) counts[d.folderId] = (counts[d.folderId] || 0) + 1; });
+  const fids = Object.keys(fl).sort((x, y) => (x === a.rootId) - (y === a.rootId) || (!!fl[y].show - !!fl[x].show) ||
+    (TYPE_ORDER.indexOf(fl[x].type) + 1 || 99) - (TYPE_ORDER.indexOf(fl[y].type) + 1 || 99) || fl[x].name.localeCompare(fl[y].name));
   if (fids.length) {
-    h += '<span class="label" style="margin-top:16px">Folders</span><p class="muted" style="margin-top:0"><small>What kind of decks each folder holds, and whether they show in the deck picker.</small></p>';
+    h += '<span class="label" style="margin-top:16px">Folders</span><p class="muted" style="margin-top:0"><small>What kind of decks each folder holds, and whether they show in the deck picker. New folders on Archidekt show up here after a refresh.</small></p>';
     fids.forEach(id => {
-      const f = fl[id], kinds = TYPE_ORDER.concat(['Archived']), cur = kinds.indexOf(f.type) === -1 ? 'other' : f.type;
-      h += '<div class="panel folderrow"><b>' + esc(f.name) + '</b><div class="row" style="margin-top:8px;align-items:center">' +
-        '<select data-folder="' + esc(id) + '" aria-label="Kind of decks in ' + esc(f.name) + '">' + kinds.map(k => '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + esc(TYPE_NAMES[k] || k) + '</option>').join('') +
+      const f = fl[id], kinds = FOLDER_KINDS, cur = kinds.indexOf(f.type) === -1 ? 'other' : f.type, n = counts[id] || 0;
+      h += '<div class="panel folderrow"><div class="sline"><b>' + esc(f.name) + (id === a.rootId ? ' <span class="muted">(home folder)</span>' : '') + '</b><span class="muted">' + n + (n === 1 ? ' deck' : ' decks') + '</span></div>' +
+        '<div class="row" style="margin-top:8px;align-items:center">' +
+        '<select data-folder="' + esc(id) + '" aria-label="Kind of decks in ' + esc(f.name) + '">' + kinds.map(k => '<option value="' + k + '"' + (cur === k ? ' selected' : '') + '>' + esc(KIND_NAMES[k] || k) + '</option>').join('') +
         (cur === 'other' ? '<option value="other" selected>' + esc(f.type) + '</option>' : '') + '</select>' +
         '<label class="check"><input type="checkbox" data-fshow="' + esc(id) + '"' + (f.show ? ' checked' : '') + '> In the picker</label></div></div>';
     });
@@ -318,16 +330,16 @@ const setSettings = patch => { Object.assign(S.settings, patch); store('smb_sett
 function withTimeout(promise, ms) {
   return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('The connection is too slow right now. Try again in a moment.')), ms))]);
 }
-async function doRefresh(username) {
+async function doRefresh(username, force) {
   if (!navigator.onLine) { toast('You\u2019re offline. Refresh your decks once you\u2019re back online.', true); return null; }
   const a = Object.assign({}, S.settings.archidekt || {});
   if (username != null) a.username = username;
   S.busy = 'Starting\u2026'; rerenderKeep();
   try {
-    const res = await refreshDecks({ username: a.username, extraIds: a.extraIds || [], existing: S.decks, folders: a.folders || {},
+    const res = await refreshDecks({ username: a.username, extraIds: a.extraIds || [], existing: S.decks, folders: a.folders || {}, rootId: a.rootId || '', force: !!force,
       onProgress: msg => { S.busy = msg; const el = document.querySelector('.status'); if (el) el.textContent = msg; } });
     if (res.decks.length) { S.busy = 'Saving\u2026'; await D.saveDecks(uid(), res.decks); }
-    a.folders = res.folders; a.lastRefresh = Date.now(); a.lastSummary = res.summary;
+    a.folders = res.folders; a.rootId = res.rootId; a.lastRefresh = Date.now(); a.lastSummary = res.summary;
     setSettings({ archidekt: a });
     S.busy = ''; toast(res.summary);
     return res;
@@ -344,7 +356,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (ST.onStatsAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -379,6 +391,11 @@ app.addEventListener('click', async e => {
     case 'archsetup': return go('archsetup');
     case 'home': case 'decks': case 'settings': S.form = null; S.sheetDeck = null; return go(act);
     case 'refresh': return doRefresh();
+    case 'reloadall': {
+      const username = document.getElementById('suser').value.trim();
+      if (!username && !((S.settings.archidekt || {}).extraIds || []).length) return toast('Enter your Archidekt username first.', true);
+      return doRefresh(username, true);
+    }
     case 'opendeck': S.sheetDeck = el.dataset.id; return rerenderKeep();
     case 'closesheet': S.sheetDeck = null; return rerenderKeep();
     case 'newdeck': S.form = { name: '', c1: '', c2: '', type: 'Scratch', bracket: '' }; return rerenderKeep();
@@ -428,7 +445,7 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('change', e => {
   const t = e.target;
-  if (ST.onStatsChange(t) || G.onChangeG(t) || G.onSettingsChange(t)) return;
+  if (ST.onStatsChange(t) || IM.onImportChange(t) || G.onChangeG(t) || G.onSettingsChange(t)) return;
   if (t.id === 'pname') {
     const name = t.value.trim(); if (!name || name === S.profile.name) return;
     S.profile.name = name; store('smb_profile_' + uid(), S.profile);
@@ -437,7 +454,7 @@ app.addEventListener('change', e => {
   if (t.dataset.folder || t.dataset.fshow) {
     const a = Object.assign({}, S.settings.archidekt || {}), fl = Object.assign({}, a.folders || {}), id = t.dataset.folder || t.dataset.fshow;
     const f = Object.assign({}, fl[id]);
-    if (t.dataset.folder && t.value !== 'other') { f.type = t.value; f.show = t.value !== 'Archived'; }
+    if (t.dataset.folder && t.value !== 'other') { f.type = t.value; f.show = TYPE_ORDER.indexOf(t.value) !== -1; }
     if (t.dataset.fshow) f.show = t.checked;
     fl[id] = f; a.folders = fl; setSettings({ archidekt: a }); return rerenderKeep();
   }

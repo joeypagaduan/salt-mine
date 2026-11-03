@@ -13,6 +13,7 @@ import {
 } from './game.js';
 
 import { homeStatsHtml } from './stats.js';
+import { settingsImportHtml } from './importer.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
 const app = document.getElementById('app');
@@ -811,7 +812,7 @@ export function settingsGameHtml() {
   });
   h += '<button class="btn" data-act="fmtadd">+ Add a format</button><button class="link" style="display:block;margin-top:10px" data-act="fmtreset">Reset to the original list</button></details>';
   const n = liveGames().length;
-  h += '<details class="collapse" id="datasec"' + (S.open.datasec ? ' open' : '') + '><summary><h2 style="display:inline">Data</h2></summary>' +
+  h += '<details class="collapse" id="datasec"' + (S.open.datasec ? ' open' : '') + '><summary><h2 style="display:inline">Data</h2></summary>' + settingsImportHtml() +
     '<div class="panel"><p style="margin:0">Update the commander list after a new set comes out. It also updates on its own every two weeks.</p>' +
     '<button class="btn" style="margin-top:10px" data-act="refreshcmds"' + (CMD.loading ? ' disabled' : '') + '>' + (CMD.loading ? 'Downloading\u2026' : 'Refresh commander list') + '</button></div>' +
     '<p class="muted"><small>' + CMD.list.length + ' commanders on this device' + (CMD.at ? ' (updated ' + new Date(CMD.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ')' : '') +
