@@ -74,7 +74,8 @@ service cloud.firestore {
         && request.resource.data.seats is list && request.resource.data.seats.size() <= 8;
       // Anyone who played can edit once they've accepted the game (or while accepting it). Someone who hasn't
       // accepted can only accept or decline. Players can link a typed-in name to a playgroup-mate, or take themselves
-      // out; only the app's owner can otherwise change who played, or lock a game. You only accept or decline for yourself.
+      // out; only the app's owner can otherwise change who played, or lock a game. Only whoever logged a game (or the app's
+      // owner) can delete it. You only accept or decline for yourself.
       allow update: if isPlayerIn(resource.data)
         && (resource.data.locked == false || isAppOwner())
         && request.resource.data.createdBy == resource.data.createdBy
@@ -82,6 +83,8 @@ service cloud.firestore {
         && request.resource.data.createdBy in request.resource.data.players
         && request.resource.data.players.size() <= 8
         && (request.resource.data.locked == resource.data.locked || isAppOwner())
+        // deleting (hiding) or bringing back a game: whoever logged it, or the app's owner
+        && (request.resource.data.get('deleted', false) == resource.data.get('deleted', false) || request.auth.uid == resource.data.createdBy || isAppOwner())
         && onlyMyMark('accepted') && onlyMyMark('declined')
         && request.resource.data.seats is list && request.resource.data.seats.size() <= 8
         && (marks(request.resource.data, 'accepted').get(request.auth.uid, false) == true

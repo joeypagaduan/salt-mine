@@ -2,7 +2,7 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 5b of 6. Everything through Phase 4, playgroups (5a), and shared games: add playgroup-mates to a game, an inbox to accept or decline, optional deck tagging, editing by anyone who played, linking typed-in names to members, and handing a playgroup to a new organizer. Owner controls (history, restore, lock) come in 5c.
+**Status:** Phase 5 done (5c). Everything through Phase 4, playgroups, shared games, and owner controls for the app's owner: a game's edit history with restore, locking, and bringing back deleted games. Plus an update banner for new versions. Phase 6 (beta polish) is next.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
 - Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html
@@ -18,6 +18,7 @@ The next version of The Salt Mine, a Magic: The Gathering game tracker and life 
 - `js/app.js` the app shell and the Phase 1 screens, `js/state.js` shared state
 - `js/gameui.js` game screens (setup, round counter, results, Recent games), `js/lifecounter.js` the life counter, `js/game.js` game logic (formats, drafts, records, share, rematch)
 - `js/stats.js` the Stats screen, the home stats card and the stats engines from classic 1.13
+- `js/owner.js` owner controls (history, restore, lock, deleted games)
 - `js/shared.js` shared games (inbox, accept and decline, deck tagging, linking names, "That wasn't me")
 - `js/groups.js` playgroups (list, members, invites, join requests), `js/vendor/qrcode.js` QR codes (qrcode-generator, MIT)
 - `js/importer.js` import from classic (preview, then save; repeatable, keyed by classic Game ID), `js/xlsx.js` a small .xlsx reader

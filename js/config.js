@@ -1,6 +1,6 @@
 // Salt Mine Beta settings. None of this is secret: the Firebase config only identifies the project,
 // and the database rules decide who can read what.
-export const APP_VERSION = '2.0.0-alpha.11';
+export const APP_VERSION = '2.0.0-alpha.12';
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyCIbwINcmHqM8cPdj_jpdQ9HzZFCL312S8',

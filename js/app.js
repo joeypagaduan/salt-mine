@@ -12,6 +12,7 @@ import * as ST from './stats.js';
 import * as IM from './importer.js';
 import * as GR from './groups.js';
 import * as SH from './shared.js';
+import * as OW from './owner.js';
 GR.takeJoinFromUrl();
 
 const ICON = {
@@ -91,7 +92,7 @@ function startWatching(user) {
     S.gamesLoaded = true;
     S.events = withRecords(S.eventsRaw);
     G.saveGamesCache();
-    softRender(['home', 'recent', 'stats', 'inbox']);
+    softRender(['home', 'recent', 'stats', 'inbox', 'history', 'deleted']);
   }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent', 'stats']); }));
   S.unsub.push(D.watchEvents(user.uid, list => {
     if (!list) return;
@@ -121,6 +122,8 @@ function softRender(views) {
 function go(view) {
   if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
   G.lcResetUi();
+  // leaving a saved game you opened but didn't change: nothing to resume
+  if (!G.isEditingView(view)) G.dropIfPristine();
   if (G.isEditingView(view) && !S.draft) view = 'home';
   // an invite link opened the app: show it once you're signed in with a profile
   if (view === 'home' && S.profile && S.user && GR.pendingJoin()) return;
@@ -128,7 +131,7 @@ function go(view) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
@@ -181,7 +184,7 @@ function viewHome() {
   let h = '<header class="top"><span class="brand"><img src="' + LOGO + '" alt=""><h1>Salt Mine <span class="beta">Beta</span></h1></span><button class="icon gear" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>';
   h += '<section class="homecard hello">' + avatar(p, S.user) + '<div><b class="cond" style="font-size:24px">Hi, ' + esc(p.name || 'there') + '</b>' +
     '<p class="muted" style="margin:2px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b>' + (D.isOwner(S.user && S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div></section>';
-  h += G.homeGameHtml() + SH.homeInboxHtml();
+  h += updateHtml() + G.homeGameHtml() + SH.homeInboxHtml();
   const n = G.gameCount();
   h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (n == null ? 'Loading\u2026' : n + (n === 1 ? ' game' : ' games')) + '</small></button>' +
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
@@ -324,6 +327,7 @@ function viewSettings() {
 
   h += G.settingsGameHtml();
   h += '<h2>About</h2><div class="panel"><p style="margin:0">Salt Mine Beta, version ' + esc(APP_VERSION) + '</p>' +
+    (S.newVersion ? '<p style="margin:6px 0 0"><b>Version ' + esc(S.newVersion) + ' is ready.</b> <button class="link" data-act="doupdate">Update now</button></p>' : '') +
     '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p>' +
     '<button class="btn" style="margin-top:12px" data-act="signout">Sign out</button></div>' +
     '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00A9Wizards of the Coast LLC.</small></p>';
@@ -369,7 +373,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || SH.onSharedAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || SH.onSharedAct(act, el) || OW.onOwnerAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -402,6 +406,7 @@ app.addEventListener('click', async e => {
       return;
     }
     case 'archsetup': return go('archsetup');
+    case 'doupdate': return doUpdate();
     case 'home': case 'decks': case 'settings': S.form = null; S.sheetDeck = null; return go(act);
     case 'refresh': return doRefresh();
     case 'reloadall': {
@@ -533,3 +538,28 @@ render();
 
 /* ---------- works offline: cache the app's files ---------- */
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- new versions ---------- */
+// Each time you come back to the app, it checks the version on the site. When there's a newer one, home and Settings
+// show "New version ready" with an Update button. It never reloads by itself, so a game in progress isn't interrupted.
+async function checkVersion() {
+  if (!navigator.onLine || S.newVersion) return;
+  try {
+    const t = await (await fetch('js/config.js?check=' + Date.now(), { cache: 'no-store' })).text();
+    const m = /APP_VERSION\s*=\s*'([^']+)'/.exec(t);
+    if (m && m[1] !== APP_VERSION) { S.newVersion = m[1]; if (S.view === 'home' || S.view === 'settings') rerenderKeep(); }
+  } catch (e) {}
+}
+function updateHtml() {
+  if (!S.newVersion) return '';
+  return '<section class="resume updatebar"><strong>New version ready</strong><p class="muted">Version ' + esc(S.newVersion) + '. Updating takes a second' +
+    (S.draft ? ', and your game in progress is kept' : '') + '.</p><button class="btn primary" style="margin-top:10px" data-act="doupdate">Update now</button></section>';
+}
+async function doUpdate() {
+  try { D.flushSettings(uid()); } catch (e) {}
+  try { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); } catch (e) {}
+  location.reload();
+}
+setTimeout(checkVersion, 4000);
+setInterval(checkVersion, 30 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });

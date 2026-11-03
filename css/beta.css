@@ -92,3 +92,6 @@ header.top h3 { min-width: 0; flex: 1; text-align: center; overflow: hidden; tex
 .podlist li span { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
 .ta-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 body.typing { padding-bottom: 60vh; }
+/* Phase 5c */
+.updatebar { border-color: var(--accent); }
+.mydeckrow { margin: 10px 0 4px; }

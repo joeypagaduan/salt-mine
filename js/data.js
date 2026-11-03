@@ -4,7 +4,7 @@ import { firebaseConfig, OWNER_UID, OWNER_CODE } from './config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, onSnapshot,
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot,
   collection, writeBatch, serverTimestamp, deleteField, query, where, Timestamp, arrayUnion, arrayRemove }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
@@ -358,4 +358,32 @@ export async function linkGuestGames(uid, to, via, items, onProgress) {
     await b.commit();
     done += chunk.length; if (onProgress) onProgress(done);
   }
+}
+
+/* ---------- owner controls (Phase 5c): only the app's owner can read history; lock and restore are owner-only in the app ---------- */
+export async function loadHistory(id) {
+  const snap = await getDocs(collection(db, 'games', id, 'history'));
+  return snap.docs.map(d => Object.assign({ id: d.id }, d.data({ serverTimestamps: 'estimate' })));
+}
+const CONTENT = ['schema', 'date', 'format', 'set', 'startLife', 'bo3', 'matchScore', 'playDraw', 'eventId', 'podSize', 'turns', 'winCondition', 'winOther', 'draw', 'notes', 'seats'];
+/** Puts a game back the way an earlier version had it (who played stays as it is now). */
+export async function restoreVersion(uid, id, prev, old) {
+  const patch = {};
+  CONTENT.forEach(f => { patch[f] = old[f] === undefined ? null : old[f]; });
+  patch.deleted = !!old.deleted;
+  const b = writeBatch(db);
+  historyAndUpdate(b, uid, id, prev, patch, 'restore');
+  await b.commit();
+}
+export async function undeleteGame(uid, id, prev) {
+  const b = writeBatch(db);
+  historyAndUpdate(b, uid, id, prev, { deleted: false, deletedAt: deleteField() }, 'restore');
+  await b.commit();
+}
+export async function setLocked(uid, id, prev, locked) {
+  // not an edit to the game itself, so it doesn't show as "Edited by"
+  const b = writeBatch(db);
+  b.set(doc(collection(db, 'games', id, 'history')), { savedAt: serverTimestamp(), savedBy: uid, why: locked ? 'lock' : 'unlock', data: prev });
+  b.update(doc(db, 'games', id), { locked: !!locked, updatedAt: serverTimestamp() });
+  await b.commit();
 }

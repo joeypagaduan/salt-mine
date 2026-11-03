@@ -15,6 +15,7 @@ import {
 import { homeStatsHtml } from './stats.js';
 import { settingsImportHtml } from './importer.js';
 import { mates, linksFor } from './shared.js';
+import { settingsOwnerHtml } from './owner.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
 const app = document.getElementById('app');
@@ -39,6 +40,15 @@ export function flushDraft() {
   if (!pushTimer) return;
   clearTimeout(pushTimer); pushTimer = null;
   if (S.draft) D.pushDraft(uid(), S.draft);
+}
+/** The parts of a draft that matter, to tell whether an opened game was changed at all. */
+const SIG_SKIP = { updatedAt: 1, createdAt: 1, origSig: 1, stage: 1, at: 1, showC2: 1 };
+function editSig(d) { return JSON.stringify(d, (k, v) => (SIG_SKIP[k] ? undefined : v)); }
+/** Leaving a saved game you opened but didn't change: no "keep editing" left behind. Returns true when it dropped it. */
+export function dropIfPristine() {
+  const d = S.draft;
+  if (!d || !d.gameId || !d.origSig || editSig(d) !== d.origSig) return false;
+  dropDraft(); return true;
 }
 export function dropDraft() {
   const id = S.draft && S.draft.id;
@@ -299,6 +309,13 @@ export function viewEnd() {
   const cmd = isCmd(d), two = sides(d) === 2, team = teamSize(d);
   const prevG = d.gameId ? gameById(d.gameId) : null, myCmd = cmdLabel(d.deckId ? deckById(d.deckId) : prevG);
   h += '<p class="muted" style="margin-top:4px">' + esc(cmd ? (d.deckName || myCmd || 'No deck chosen') : deckLabel(d) + (deckLabel(d).indexOf(d.format) === -1 ? ', ' + d.format : '')) + ', ' + esc(niceDate(d.date)) + '</p>';
+  // your deck, changeable here too (for a game someone else logged, it starts as they logged your commander)
+  if (cmd && d.gameId) {
+    const myDeck = d.deckId ? deckById(d.deckId) : null;
+    h += '<button class="deck mydeckrow" data-act="pick"><span class="stripe" style="background:' + manaGradient(myDeck ? myDeck.colors : (prevG && prevG.colors) || 'C') + '"></span>' +
+      '<span class="txt"><span class="name">' + esc(myDeck ? myDeck.name : d.deckName || (myCmd ? myCmd + ' (as logged)' : 'No deck chosen')) + '</span>' +
+      '<span class="cmd">' + (myDeck ? 'Your deck. Tap to change.' : 'Tap to choose your deck (optional)') + '</span></span></button>';
+  }
   // who played what, so the game is easy to recognize (tap Edit pod to change any of it)
   const pod = d.opponents.filter(o => String(o.player || '').trim() || o.c1 || o.deck);
   if (pod.length) {
@@ -387,6 +404,7 @@ export function viewRecent() {
       '<button class="btn" data-act="menurematch">Rematch</button>' +
       '<button class="btn" data-act="menushare">Share result</button>' +
       (lockedFor(g) ? '' : g.mine ? '<button class="btn danger" data-act="menudel">Delete game</button>' : '<button class="btn danger" data-act="menuleave">That wasn\u2019t me</button>') +
+      (D.isOwner(uid()) ? '<button class="btn" data-act="menuhistory">History</button><button class="btn" data-act="menulock">' + (g.locked ? 'Unlock game' : 'Lock game') + '</button>' : '') +
       '<button class="btn" data-act="menusel">Select more games</button>' +
       '<button class="btn" data-act="menuclose">Cancel</button></div></div>';
   }
@@ -730,7 +748,7 @@ export function onAct(act, el) {
       const g = gameById(id); if (!g) return true;
       if (lockedFor(g)) { toast('This game is locked.', true); return true; }
       if (d && !(d.gameId === id) && !confirm('Discard the game in progress and edit this one instead?')) return true;
-      if (!(d && d.gameId === id)) { S.draft = gameToDraft(g); touch(); }
+      if (!(d && d.gameId === id)) { S.draft = gameToDraft(g); S.draft.origSig = editSig(S.draft); touch(); }
       H.go('ending'); return true;
     }
     case 'menuclose': S.gameMenu = null; K(); return true;
@@ -870,7 +888,7 @@ export function settingsGameHtml() {
   });
   h += '<button class="btn" data-act="fmtadd">+ Add a format</button><button class="link" style="display:block;margin-top:10px" data-act="fmtreset">Reset to the original list</button></details>';
   const n = liveGames().length;
-  h += '<details class="collapse" id="datasec"' + (S.open.datasec ? ' open' : '') + '><summary><h2 style="display:inline">Data</h2></summary>' + settingsImportHtml() +
+  h += '<details class="collapse" id="datasec"' + (S.open.datasec ? ' open' : '') + '><summary><h2 style="display:inline">Data</h2></summary>' + settingsImportHtml() + settingsOwnerHtml() +
     '<div class="panel"><p style="margin:0">Update the commander list after a new set comes out. It also updates on its own every two weeks.</p>' +
     '<button class="btn" style="margin-top:10px" data-act="refreshcmds"' + (CMD.loading ? ' disabled' : '') + '>' + (CMD.loading ? 'Downloading\u2026' : 'Refresh commander list') + '</button></div>' +
     '<p class="muted"><small>' + CMD.list.length + ' commanders on this device' + (CMD.at ? ' (updated ' + new Date(CMD.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ')' : '') +
