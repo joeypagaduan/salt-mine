@@ -1,8 +1,13 @@
-// Salt Mine Beta, Phase 1: sign-in, your profile and friend code, settings, and decks.
-import { APP_VERSION, RELAY_URL } from './config.js';
+// Salt Mine Beta: the app shell and the Phase 1 screens (sign-in, profile, settings, decks).
+// Game screens live in gameui.js, game logic in game.js.
+import { APP_VERSION } from './config.js';
 import { esc, store, toast, seg, manaGradient, normalizeColors, PRESETS, themeColors, applyTheme, schemeSwatch } from './util.js';
 import * as D from './data.js';
 import { refreshDecks, parseDeckIds } from './archidekt.js';
+import { S } from './state.js';
+import { fromRecord, sortGames, withRecords } from './game.js';
+import { ensureCommanders } from './commanders.js';
+import * as G from './gameui.js';
 
 const ICON = {
   gear: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -15,10 +20,6 @@ const TYPE_ORDER = ['Scratch', 'Upgraded', 'Pre-Con'];
 const TYPE_NAMES = { Scratch: 'From scratch', Upgraded: 'Upgraded', 'Pre-Con': 'Pre-cons' };
 const LOGO = 'icons/icon-192.png';
 
-const S = {
-  view: 'loading', user: null, profile: null, settings: store('smb_settings') || {}, decks: [],
-  busy: '', deckQ: '', form: null, sheetDeck: null, open: {}, unsub: []
-};
 const app = document.getElementById('app');
 applyTheme(S.settings);
 
@@ -36,25 +37,48 @@ D.watchAuth(async (user, err) => {
   }
   S.unsub.push(D.watchSettings(user.uid, s => {
     if (!s) return;
-    S.settings = s; store('smb_settings', s); applyTheme(s);
+    S.settings = Object.assign({}, s, D.pendingSettings()); store('smb_settings', S.settings); applyTheme(S.settings);
     if (S.view === 'settings' || S.view === 'decks') rerenderKeep();
   }));
   S.unsub.push(D.watchDecks(user.uid, list => {
     if (!list) return;
     S.decks = list;
-    if (S.view === 'decks' || S.view === 'home') rerenderKeep();
+    if (S.view === 'decks' || S.view === 'home' || (S.view === 'setup' && !S.picker)) rerenderKeep();
   }));
+  G.loadLocalDraft();
+  S.games = []; S.gamesLoaded = false; S.eventsRaw = []; S.events = [];
+  S.unsub.push(D.watchGames(user.uid, list => {
+    S.games = sortGames(list.map(x => { const g = fromRecord(x.id, x.data, x.pending); g.doc = x.raw; return g; }));
+    S.gamesLoaded = true;
+    S.events = withRecords(S.eventsRaw);
+    if (S.view === 'home' || S.view === 'recent') rerenderKeep();
+  }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); }));
+  S.unsub.push(D.watchEvents(user.uid, list => {
+    if (!list) return;
+    S.eventsRaw = list; S.events = withRecords(list);
+    if (S.view === 'home') rerenderKeep();
+  }));
+  S.unsub.push(D.watchDraft(user.uid, G.onRemoteDraft));
   await splashWait();
   if (!S.profile) return go('welcome');
   store('smb_profile_' + user.uid, S.profile);
   go('home');
+  // the commander list for typing in opponents' commanders: downloads the first time, then every two weeks
+  setTimeout(() => ensureCommanders(false).catch(() => {}), 1500);
 });
 function splashWait() { return new Promise(r => setTimeout(r, Math.max(0, SPLASH_UNTIL - Date.now()))); }
 
-function go(view) { S.view = view; render(); window.scrollTo(0, 0); }
+function go(view) {
+  if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
+  if (G.isEditingView(view) && !S.draft) view = 'home';
+  S.view = view; S.picker = false; render(); window.scrollTo(0, 0);
+}
 function render() {
-  const views = { loading: viewLoading, signin: viewSignIn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings };
-  app.innerHTML = (views[S.view] || viewHome)() + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
+  const views = { loading: viewLoading, signin: viewSignIn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent };
+  if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
+  app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
+  G.afterRender();
 }
 function rerenderKeep() {
   const y = window.scrollY, a = document.activeElement, id = a && a.id, pos = a && a.selectionStart;
@@ -96,13 +120,14 @@ function viewHome() {
   let h = '<header class="top"><span class="brand"><img src="' + LOGO + '" alt=""><h1>Salt Mine <span class="beta">Beta</span></h1></span><button class="icon gear" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>';
   h += '<section class="homecard hello">' + avatar(p, S.user) + '<div><b class="cond" style="font-size:24px">Hi, ' + esc(p.name || 'there') + '</b>' +
     '<p class="muted" style="margin:2px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b>' + (D.isOwner(S.user && S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div></section>';
-  h += '<section class="resume"><strong>Beta, part 1 of 6</strong><p class="muted">Your profile, settings and decks are ready and sync across your devices. Logging games, the life counter, stats and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</p></section>';
-  h += '<button class="btn primary big" disabled>Start a game <small style="display:block;font-weight:500;opacity:.8">Coming in the next update</small></button>';
-  h += '<div class="navgrid"><button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
-    '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button>' +
+  h += G.homeGameHtml();
+  const n = S.games.filter(g => !g.deleted).length;
+  h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (S.gamesLoaded ? n + (n === 1 ? ' game' : ' games') : 'Loading\u2026') + '</small></button>' +
+    '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
     '<button class="navbtn" disabled>' + ICON.stats + 'Stats<small class="muted">Coming soon</small></button>' +
-    '<button class="navbtn" disabled>' + ICON.recent + 'Recent games<small class="muted">Coming soon</small></button></div>';
-  if (!navigator.onLine) h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
+    '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button></div>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 2 of 6. The full life counter, stats and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
+  if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
 function avatar(p, user) {
@@ -226,6 +251,7 @@ function viewSettings() {
   }
   h += '</details>';
 
+  h += G.settingsGameHtml();
   h += '<h2>About</h2><div class="panel"><p style="margin:0">Salt Mine Beta, version ' + esc(APP_VERSION) + '</p>' +
     '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p>' +
     '<button class="btn" style="margin-top:12px" data-act="signout">Sign out</button></div>' +
@@ -235,6 +261,11 @@ function viewSettings() {
 
 /* ---------- actions ---------- */
 const uid = () => S.user && S.user.uid;
+Object.assign(G.H, {
+  go: go, render: render, rerenderKeep: () => { const y = window.scrollY; render(); window.scrollTo(0, y); }, setSettings: patch => setSettings(patch),
+  pickerDecks: pickerDecks, deckType: d => deckInfo(d).type,
+  newDeck: fromPicker => { S.form = { name: '', c1: '', c2: '', type: 'Scratch', bracket: '', fromPicker: !!fromPicker }; rerenderKeep(); }
+});
 const setSettings = patch => { Object.assign(S.settings, patch); store('smb_settings', S.settings); D.saveSettings(uid(), patch); };
 
 async function doRefresh(username) {
@@ -260,6 +291,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
+  if (G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -303,6 +335,7 @@ app.addEventListener('click', async e => {
   }
 });
 function onSeg(name, val) {
+  if (G.isEditingView(S.view) && G.onSegG(name, val)) return;
   if (name === 'theme') { setSettings({ theme: val }); applyTheme(S.settings); return rerenderKeep(); }
   if (name === 'custgrad') {
     const tc = themeColors(S.settings), cur = S.settings.scheme && S.settings.scheme.kind === 'custom' ? S.settings.scheme : { c1: tc.c1, c2: tc.c2 || '#2E7BC4' };
@@ -314,6 +347,7 @@ function onSeg(name, val) {
 app.addEventListener('toggle', e => { if (e.target.id) S.open[e.target.id] = e.target.open; }, true);
 app.addEventListener('input', e => {
   const t = e.target;
+  if (G.onInputG(t) || G.onSettingsInput(t)) return;
   if (t.id === 'deckq') { S.deckQ = t.value; document.getElementById('decklist').innerHTML = deckListHtml(); return; }
   if (t.id === 'wname') { S.welcomeName = t.value; const c = document.querySelector('.welcome .code'); if (c && !D.isOwner(uid())) c.textContent = D.codeBase(t.value) + '-####'; return; }
   if (t.dataset.cust) {
@@ -329,6 +363,7 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('change', e => {
   const t = e.target;
+  if (G.onChangeG(t) || G.onSettingsChange(t)) return;
   if (t.id === 'pname') {
     const name = t.value.trim(); if (!name || name === S.profile.name) return;
     S.profile.name = name; store('smb_profile_' + uid(), S.profile);
@@ -386,6 +421,10 @@ async function saveTypedDeck() {
   const deck = { id: f.id || 't-' + Date.now().toString(36), source: 'typed', name: f.name || f.c1, c1: f.c1, c2: f.c2, colors: f.c1 ? colors : 'C',
     type: f.type, bracket: f.bracket === '' ? '' : +f.bracket, bracketSource: f.bracket === '' ? '' : 'Set by you', retired: false, status: 'ok' };
   D.saveDeck(uid(), deck).catch(() => {}); // saves on this device right away, and syncs when online
+  if (f.fromPicker && S.draft) {
+    if (!S.decks.some(x => x.id === deck.id)) S.decks.push(deck);
+    S.draft.deckId = deck.id; S.draft.deckName = deck.name; G.touch();
+  }
   S.busy = ''; S.form = null; toast(f.id ? 'Deck updated' : 'Deck added'); rerenderKeep();
 }
 
