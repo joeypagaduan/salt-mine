@@ -12,6 +12,7 @@ import {
   toRecord, fromRecord, knownPlayers, otherDecks, deckPlays
 } from './game.js';
 
+import { homeStatsHtml } from './stats.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
 const app = document.getElementById('app');
@@ -128,6 +129,7 @@ export function homeGameHtml() {
       '<p class="muted">Event in progress, ' + esc(recordText(e)) + ' so far</p>' +
       '<div class="row" style="margin-top:12px"><button class="btn primary" data-act="evnext" data-id="' + esc(e.id) + '">Next match</button><button class="btn" data-act="evend" data-id="' + esc(e.id) + '">End event</button></div></section>';
   });
+  h += homeStatsHtml();
   h += '<button class="btn primary big" data-act="new">Start a game</button>';
   h += '<button class="btn" style="margin-top:10px" data-act="quick">Log a game without the life counter</button>';
   return h;

@@ -36,3 +36,12 @@ input[type=search] { width: 100%; font: inherit; font-size: 17px; color: var(--i
 .seg.names button { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
 .row.endrow { align-items: flex-end; }
 .btn:disabled small { opacity: .8; }
+/* Phase 3: stats */
+.colwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cols.many { min-width: max-content; }
+.cols.many .col { flex: 0 0 44px; }
+.seg.srange { flex-wrap: wrap; }
+#morefilters summary { font-weight: 600; padding: 6px 0; cursor: pointer; }
+.stats4 b { overflow-wrap: anywhere; }
+.seg.srange button { padding-left: 6px; padding-right: 6px; }
+.tile .dots i { box-sizing: border-box; }

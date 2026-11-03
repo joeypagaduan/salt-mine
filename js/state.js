@@ -10,7 +10,9 @@ export const S = {
   gamesLoaded: false,
   events: [],           // prerelease-style events with their records
   lastGame: null,       // the game just saved, for "Play again?"
-  picker: false, sel: null, gameMenu: null, recentShown: 25, fmtOpen: false, lifeCustom: false
+  picker: false, sel: null, gameMenu: null, recentShown: 25, fmtOpen: false, lifeCustom: false,
+  // stats (Phase 3)
+  statsFilter: { range: 'all', types: [], brackets: [], opponents: [], from: '', to: '', formats: [] }, statsSort: 'games', statsMode: null
 };
 export const uid = () => S.user && S.user.uid;
 

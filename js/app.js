@@ -8,6 +8,7 @@ import { S } from './state.js';
 import { fromRecord, sortGames, withRecords } from './game.js';
 import { ensureCommanders } from './commanders.js';
 import * as G from './gameui.js';
+import * as ST from './stats.js';
 
 const ICON = {
   gear: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -68,12 +69,12 @@ function startWatching(user) {
   S.unsub.push(D.watchSettings(user.uid, s => {
     if (!s) return;
     S.settings = Object.assign({}, s, D.pendingSettings()); store('smb_settings', S.settings); applyTheme(S.settings);
-    if (S.view === 'settings' || S.view === 'decks') rerenderKeep();
+    if (S.view === 'settings' || S.view === 'decks' || S.view === 'stats') rerenderKeep();
   }));
   S.unsub.push(D.watchDecks(user.uid, list => {
     if (!list) return;
     S.decks = list;
-    if (S.view === 'decks' || S.view === 'home' || (S.view === 'setup' && !S.picker)) rerenderKeep();
+    if (S.view === 'decks' || S.view === 'home' || S.view === 'stats' || (S.view === 'setup' && !S.picker)) rerenderKeep();
   }));
   G.loadLocalDraft();
   S.eventsRaw = []; S.events = [];
@@ -83,12 +84,12 @@ function startWatching(user) {
     S.gamesLoaded = true;
     S.events = withRecords(S.eventsRaw);
     G.saveGamesCache();
-    softRender(['home', 'recent']);
-  }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent']); }));
+    softRender(['home', 'recent', 'stats']);
+  }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent', 'stats']); }));
   S.unsub.push(D.watchEvents(user.uid, list => {
     if (!list) return;
     S.eventsRaw = list; S.events = withRecords(list);
-    softRender(['home']);
+    softRender(['home', 'stats']);
   }));
   S.unsub.push(D.watchDraft(user.uid, G.onRemoteDraft));
 }
@@ -111,10 +112,11 @@ function go(view) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
+  if (S.view === 'stats') ST.afterStats();
 }
 function rerenderKeep() {
   const y = window.scrollY, a = document.activeElement, id = a && a.id, pos = a && a.selectionStart;
@@ -167,9 +169,9 @@ function viewHome() {
   const n = G.gameCount();
   h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (n == null ? 'Loading\u2026' : n + (n === 1 ? ' game' : ' games')) + '</small></button>' +
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
-    '<button class="navbtn" disabled>' + ICON.stats + 'Stats<small class="muted">Coming soon</small></button>' +
+    '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
     '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 2 of 6. Stats, importing your classic games and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 3 of 6. Importing your classic games and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -262,6 +264,7 @@ function viewSettings() {
   h += '<h2>You</h2><div class="panel"><div class="row" style="align-items:center">' + avatar(p, S.user) +
     '<div style="flex:1"><label for="pname" class="label">Display name</label><input id="pname" type="text" maxlength="40" value="' + esc(p.name || '') + '"></div></div>' +
     '<p style="margin:12px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b> <button class="link" data-act="copycode">Copy</button>' + (D.isOwner(S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div>';
+  h += ST.settingsStatsHtml();
 
   h += '<details class="collapse" id="appearsec"' + (S.open.appearsec ? ' open' : '') + '><summary><h2 style="display:inline">Appearance</h2></summary>';
   h += '<div class="field"><span class="label">Light or dark</span>' + seg('theme', [{ val: 'system', label: 'Match device' }, { val: 'light', label: 'Light' }, { val: 'dark', label: 'Dark' }], st.theme || 'system') + '</div>';
@@ -341,7 +344,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -395,6 +398,7 @@ app.addEventListener('click', async e => {
   }
 });
 function onSeg(name, val) {
+  if (ST.onStatsSeg(name, val)) return;
   if (G.isEditingView(S.view) && G.onSegG(name, val)) return;
   if (G.onSettingsSeg(name, val)) return;
   if (name === 'theme') { setSettings({ theme: val }); applyTheme(S.settings); return rerenderKeep(); }
@@ -424,7 +428,7 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('change', e => {
   const t = e.target;
-  if (G.onChangeG(t) || G.onSettingsChange(t)) return;
+  if (ST.onStatsChange(t) || G.onChangeG(t) || G.onSettingsChange(t)) return;
   if (t.id === 'pname') {
     const name = t.value.trim(); if (!name || name === S.profile.name) return;
     S.profile.name = name; store('smb_profile_' + uid(), S.profile);

@@ -2,7 +2,7 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 2c of 6. Sign-in, profiles and friend codes, settings and themes, decks (from Archidekt or typed in), and games: setup with every 1.13 format option, a round counter, quick logging, results, Recent games, rematch and share, and the full life counter from classic 1.13, polished for speed and weak signal. Stats, import and playgroups come in later phases.
+**Status:** Phase 3 of 6. Sign-in, profiles and friend codes, settings and themes, decks (from Archidekt or typed in), and games: setup with every 1.13 format option, a round counter, quick logging, results, Recent games, rematch and share, and the full life counter from classic 1.13, polished for speed and weak signal, plus stats (Commander and other formats, ported from classic 1.13) with a home screen summary. Import and playgroups come in later phases.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
 - Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html
@@ -17,6 +17,7 @@ The next version of The Salt Mine, a Magic: The Gathering game tracker and life 
 - `index.html`, `css/app.css` (styles from the classic app), `css/beta.css` (additions)
 - `js/app.js` the app shell and the Phase 1 screens, `js/state.js` shared state
 - `js/gameui.js` game screens (setup, round counter, results, Recent games), `js/lifecounter.js` the life counter, `js/game.js` game logic (formats, drafts, records, share, rematch)
+- `js/stats.js` the Stats screen, the home stats card and the stats engines from classic 1.13
 - `js/commanders.js` the commander list from Scryfall, `js/data.js` Firebase, `js/archidekt.js` deck loading, `js/util.js` helpers and themes, `js/config.js` settings
 - `check.html` and `js/check.js`: the Phase 0 setup check
 

@@ -197,7 +197,10 @@ export function gameToDraft(g) {
     podSize: +g.podSize || Math.max(2, g.opponents.length + 1), mySeat: g.mySeat || null, myPlace: g.myPlace || null,
     turns: g.turns || '', notes: g.notes || '', winCondition: g.winCondition || '', winOther: g.winOther || '',
     elimBy: g.elimBy || '', elimHow: g.elimHow || '', draw: g.resultType === DRAW_RESULT,
-    opponents: g.opponents.map(o => ({ player: o.player, c1: o.c1, c2: o.c2, seat: o.seat || null, place: o.place || null, showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '' }))
+    // turn times from the life counter are kept when a game is edited
+    myTurnTime: g.myTurnTime || null, myTurnsTaken: g.myTurnsTaken || null,
+    opponents: g.opponents.map(o => ({ player: o.player, c1: o.c1, c2: o.c2, seat: o.seat || null, place: o.place || null, showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '',
+      turnTime: o.turnTime || null, turnsTaken: o.turnsTaken || null }))
   });
   if (g.format && g.format !== 'Commander') {
     const m = String(g.matchScore || '').match(/^(\d+)-(\d+)$/), ev = S.events.find(x => x.id === g.eventId);
@@ -277,9 +280,12 @@ export function fromRecord(id, rec, pending) {
     winCondition: rec.winCondition || '', winOther: rec.winOther || '', elimBy: me.elimBy || '', elimHow: me.elimHow || '',
     resultType: rec.draw ? DRAW_RESULT : (+me.place === 1 ? 'Win' : 'Loss'), draw: !!rec.draw, notes: rec.notes || '',
     opponents: others.map(s => ({ player: s.name || '', c1: s.c1 || '', c2: s.c2 || '', seat: s.seat || null, place: s.place || null,
-      deck: s.deck || '', colors: s.colors || '', team: rel(s.team), uid: s.uid || null })),
+      deck: s.deck || '', colors: s.colors || '', team: rel(s.team), uid: s.uid || null, turnTime: s.turnTime || null, turnsTaken: s.turnsTaken || null })),
     format: rec.format || 'Commander', set: rec.set || '', startLife: rec.startLife || '', matchScore: rec.matchScore || '',
     bo3: !!rec.bo3, eventId: rec.eventId || '', myColors: rec.format && rec.format !== 'Commander' ? me.colors || '' : '', playDraw: rec.playDraw || '',
+    myTurnTime: me.turnTime || null, myTurnsTaken: me.turnsTaken || null,
+    // a game someone else logged only counts for you once you accept it (Phase 5)
+    accepted: !rec.createdBy || rec.createdBy === uid() || !!(rec.accepted && rec.accepted[uid()]),
     deleted: !!rec.deleted, locked: !!rec.locked, pending: !!pending,
     created: ts(rec.createdAt), updated: ts(rec.updatedAt), raw: rec
   };
