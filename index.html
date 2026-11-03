@@ -17,6 +17,20 @@
 <style id="themevars"></style>
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/beta.css">
+<!-- fetch every part of the app at once instead of one after another -->
+<link rel="modulepreload" href="js/app.js">
+<link rel="modulepreload" href="js/config.js">
+<link rel="modulepreload" href="js/util.js">
+<link rel="modulepreload" href="js/state.js">
+<link rel="modulepreload" href="js/data.js">
+<link rel="modulepreload" href="js/archidekt.js">
+<link rel="modulepreload" href="js/game.js">
+<link rel="modulepreload" href="js/commanders.js">
+<link rel="modulepreload" href="js/gameui.js">
+<link rel="modulepreload" href="js/lifecounter.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js" crossorigin>
 </head>
 <body>
 <div id="app"><div class="loading splash"><img class="logo-big" src="icons/icon-192.png" alt=""><h1>Salt Mine Beta</h1><p class="byline">by Joey Pagaduan</p></div></div>

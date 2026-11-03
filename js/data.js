@@ -84,7 +84,14 @@ export const pendingSettings = () => Object.assign({}, pending || {});
 export function saveSettings(uid, patch) {
   pending = Object.assign(pending || {}, patch);
   clearTimeout(timer);
-  timer = setTimeout(() => { const p = pending; pending = null; setDoc(settingsRef(uid), p, { merge: true }).catch(() => {}); }, 500);
+  timer = setTimeout(() => flushSettings(uid), 500);
+}
+/** Sends any settings changes still waiting (when the app is being closed or put in the background). */
+export function flushSettings(uid) {
+  clearTimeout(timer);
+  if (!pending || !uid) return;
+  const p = pending; pending = null;
+  setDoc(settingsRef(uid), p, { merge: true }).catch(() => {});
 }
 
 /* ---------- decks ---------- */

@@ -24,17 +24,47 @@ const app = document.getElementById('app');
 applyTheme(S.settings);
 
 /* ---------- start-up ---------- */
+// With a profile already on this device, the app opens straight to home and checks the account in the background,
+// so a weak signal doesn't hold up the launch screen. The first time on a device it waits for the account.
 const SPLASH_UNTIL = Date.now() + 900;
 D.watchAuth(async (user, err) => {
   if (err) { S.signinError = err; if (!user) return go('signin'); }
   S.unsub.forEach(u => u()); S.unsub = [];
   S.user = user;
   if (!user) { await splashWait(); return go('signin'); }
+  const cached = store('smb_profile_' + user.uid);
+  S.profile = cached || null;
+  startWatching(user);
+  if (cached) {
+    go('home');
+    D.loadProfile(user.uid).then(p => {
+      if (!p || S.user !== user) return;
+      S.profile = p; store('smb_profile_' + user.uid, p);
+      if (S.view === 'home' || S.view === 'settings') rerenderKeep();
+    }).catch(() => {});
+  } else if (!(await firstProfile(user))) return;
+  // the commander list for typing in opponents' commanders: downloads the first time, then every two weeks
+  setTimeout(() => ensureCommanders(false).catch(() => {}), 1500);
+});
+function splashWait() { return new Promise(r => setTimeout(r, Math.max(0, SPLASH_UNTIL - Date.now()))); }
+/** First launch on this device: the profile has to come from the account. Returns false when it couldn't. */
+async function firstProfile(user) {
+  S.profileError = null;
   try {
     S.profile = await D.loadProfile(user.uid);
   } catch (e) {
-    S.profile = store('smb_profile_' + user.uid); // offline with nothing cached yet: use what this device remembers
+    // no connection and nothing on this device yet: don't offer to make a new profile over the real one
+    S.profileError = e; await splashWait(); go('noconn'); return false;
   }
+  await splashWait();
+  if (S.user !== user) return false;
+  if (!S.profile) { go('welcome'); return false; }
+  store('smb_profile_' + user.uid, S.profile);
+  go('home');
+  return true;
+}
+/** Live copies of your settings, decks, games, events and the game in progress. */
+function startWatching(user) {
   S.unsub.push(D.watchSettings(user.uid, s => {
     if (!s) return;
     S.settings = Object.assign({}, s, D.pendingSettings()); store('smb_settings', S.settings); applyTheme(S.settings);
@@ -46,27 +76,32 @@ D.watchAuth(async (user, err) => {
     if (S.view === 'decks' || S.view === 'home' || (S.view === 'setup' && !S.picker)) rerenderKeep();
   }));
   G.loadLocalDraft();
-  S.games = []; S.gamesLoaded = false; S.eventsRaw = []; S.events = [];
+  S.eventsRaw = []; S.events = [];
+  G.loadGamesCache();
   S.unsub.push(D.watchGames(user.uid, list => {
     S.games = sortGames(list.map(x => { const g = fromRecord(x.id, x.data, x.pending); g.doc = x.raw; return g; }));
     S.gamesLoaded = true;
     S.events = withRecords(S.eventsRaw);
-    if (S.view === 'home' || S.view === 'recent') rerenderKeep();
-  }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); }));
+    G.saveGamesCache();
+    softRender(['home', 'recent']);
+  }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent']); }));
   S.unsub.push(D.watchEvents(user.uid, list => {
     if (!list) return;
     S.eventsRaw = list; S.events = withRecords(list);
-    if (S.view === 'home') rerenderKeep();
+    softRender(['home']);
   }));
   S.unsub.push(D.watchDraft(user.uid, G.onRemoteDraft));
-  await splashWait();
-  if (!S.profile) return go('welcome');
-  store('smb_profile_' + user.uid, S.profile);
-  go('home');
-  // the commander list for typing in opponents' commanders: downloads the first time, then every two weeks
-  setTimeout(() => ensureCommanders(false).catch(() => {}), 1500);
-});
-function splashWait() { return new Promise(r => setTimeout(r, Math.max(0, SPLASH_UNTIL - Date.now()))); }
+}
+/** Redraws once per frame at most, however many updates arrive together (a sync can bring many at once). */
+let softRaf = 0, softViews = {};
+function softRender(views) {
+  views.forEach(v => { softViews[v] = true; });
+  if (softRaf) return;
+  softRaf = requestAnimationFrame(() => {
+    const v = softViews; softRaf = 0; softViews = {};
+    if (v[S.view]) rerenderKeep();
+  });
+}
 
 function go(view) {
   if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
@@ -75,7 +110,7 @@ function go(view) {
   S.view = view; S.picker = false; render(); window.scrollTo(0, 0);
 }
 function render() {
-  const views = { loading: viewLoading, signin: viewSignIn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
+  const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
     setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
@@ -97,6 +132,13 @@ function viewSignIn() {
     '<button class="btn primary big" style="max-width:340px;margin:22px auto 0" data-act="signin">Sign in with Google</button>' +
     (e ? '<p class="muted" style="margin-top:14px">Sign-in didn\u2019t finish: ' + esc(e.code || e.message || e) + '</p>' : '') +
     '<p class="muted" style="margin-top:18px"><small>Your games are private to you unless you play them with friends in a playgroup.</small></p></div>';
+}
+function viewNoConn() {
+  const e = S.profileError;
+  return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>Can\u2019t reach your account</h1>' +
+    '<p class="byline">This is the first time Salt Mine Beta has opened on this device, so it needs a connection once to load your profile. After that it works offline.</p>' +
+    '<button class="btn primary big" style="max-width:340px;margin:22px auto 0" data-act="retryprofile"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Trying\u2026' : 'Try again') + '</button>' +
+    (e ? '<p class="muted" style="margin-top:14px"><small>' + esc(e.code || e.message || e) + '</small></p>' : '') + '</div>';
 }
 function viewWelcome() {
   const u = S.user, first = String(u.displayName || '').split(' ')[0];
@@ -122,12 +164,12 @@ function viewHome() {
   h += '<section class="homecard hello">' + avatar(p, S.user) + '<div><b class="cond" style="font-size:24px">Hi, ' + esc(p.name || 'there') + '</b>' +
     '<p class="muted" style="margin:2px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b>' + (D.isOwner(S.user && S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div></section>';
   h += G.homeGameHtml();
-  const n = S.games.filter(g => !g.deleted).length;
-  h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (S.gamesLoaded ? n + (n === 1 ? ' game' : ' games') : 'Loading\u2026') + '</small></button>' +
+  const n = G.gameCount();
+  h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (n == null ? 'Loading\u2026' : n + (n === 1 ? ' game' : ' games')) + '</small></button>' +
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
     '<button class="navbtn" disabled>' + ICON.stats + 'Stats<small class="muted">Coming soon</small></button>' +
     '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 2 of 6. The full life counter, stats and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 2 of 6. Stats, importing your classic games and playgroups arrive in the next updates. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -269,7 +311,12 @@ Object.assign(G.H, {
 });
 const setSettings = patch => { Object.assign(S.settings, patch); store('smb_settings', S.settings); D.saveSettings(uid(), patch); };
 
+/** Gives up on a step that needs the internet if it takes too long (a weak signal can leave it waiting). */
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('The connection is too slow right now. Try again in a moment.')), ms))]);
+}
 async function doRefresh(username) {
+  if (!navigator.onLine) { toast('You\u2019re offline. Refresh your decks once you\u2019re back online.', true); return null; }
   const a = Object.assign({}, S.settings.archidekt || {});
   if (username != null) a.username = username;
   S.busy = 'Starting\u2026'; rerenderKeep();
@@ -300,12 +347,22 @@ app.addEventListener('click', async e => {
       S.signinError = null;
       try { await D.signIn(); } catch (err) { S.signinError = err; render(); }
       return;
-    case 'signout': if (confirm('Sign out of Salt Mine Beta on this device?')) { await D.signOut(); store('smb_settings', null); } return;
+    case 'signout':
+      if (confirm('Sign out of Salt Mine Beta on this device?')) { D.flushSettings(uid()); G.clearGamesCache(); await D.signOut(); store('smb_settings', null); }
+      return;
+    case 'retryprofile': {
+      S.busy = 'trying'; render();
+      const user = S.user, ok = await firstProfile(user);
+      S.busy = ''; if (S.view === 'noconn') render();
+      if (ok) setTimeout(() => ensureCommanders(false).catch(() => {}), 1500);
+      return;
+    }
     case 'makeprofile': {
       const name = document.getElementById('wname').value.trim();
       if (!name) return toast('Pick a display name first.', true);
+      if (!navigator.onLine) return toast('You need a connection to set up your profile. Try again once you\u2019re online.', true);
       S.busy = 'saving'; render();
-      try { S.profile = await D.createProfile(S.user, name); store('smb_profile_' + uid(), S.profile); S.busy = ''; go('archsetup'); }
+      try { S.profile = await withTimeout(D.createProfile(S.user, name), 20000); store('smb_profile_' + uid(), S.profile); S.busy = ''; go('archsetup'); }
       catch (err) { S.busy = ''; render(); toast('Couldn\u2019t set up your profile: ' + (err.code || err.message), true); }
       return;
     }
@@ -432,6 +489,10 @@ async function saveTypedDeck() {
   S.busy = ''; S.form = null; toast(f.id ? 'Deck updated' : 'Deck added'); rerenderKeep();
 }
 
+// Closing the app or switching away sends anything still waiting a moment to be sent (settings, the game in progress).
+function flushAll() { if (!S.user) return; D.flushSettings(uid()); G.flushDraft(); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+window.addEventListener('pagehide', flushAll);
 window.addEventListener('online', () => { if (S.view === 'home') rerenderKeep(); });
 window.addEventListener('offline', () => { if (S.view === 'home') rerenderKeep(); });
 render();

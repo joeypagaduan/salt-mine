@@ -2,7 +2,7 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 2b of 6. Sign-in, profiles and friend codes, settings and themes, decks (from Archidekt or typed in), and games: setup with every 1.13 format option, a round counter, quick logging, results, Recent games, rematch and share, and the full life counter from classic 1.13. Polish (2c), stats, import and playgroups come in later phases.
+**Status:** Phase 2c of 6. Sign-in, profiles and friend codes, settings and themes, decks (from Archidekt or typed in), and games: setup with every 1.13 format option, a round counter, quick logging, results, Recent games, rematch and share, and the full life counter from classic 1.13, polished for speed and weak signal. Stats, import and playgroups come in later phases.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
 - Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html

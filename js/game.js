@@ -289,10 +289,22 @@ export function sortGames(list) {
 }
 
 /* ---------- what your past games remember ---------- */
+// These look through every game, and the setup screen asks for them on each redraw, so each answer is kept
+// until the games (or remembered names) change. Deleted games don't count.
+const memo = {};
+function remember(name, extra, fn) {
+  const m = memo[name];
+  if (m && m.games === S.games && m.extra === extra) return m.val;
+  const val = fn();
+  memo[name] = { games: S.games, extra: extra, val: val };
+  return val;
+}
+const counted = () => S.games.filter(g => !g.deleted);
 /** Players you've played with, most often first, with the commanders each has played. */
-export function knownPlayers() {
+export function knownPlayers() { return remember('players', (S.settings.players || []).join('\n'), knownPlayersNow); }
+function knownPlayersNow() {
   const players = {};
-  S.games.forEach(g => {
+  counted().forEach(g => {
     const t = Date.parse(g.date) || 0;
     g.opponents.forEach(o => {
       const name = String(o.player || '').trim();
@@ -315,9 +327,10 @@ export function knownPlayers() {
   return out.sort((a, b) => b.count - a.count || b.last - a.last);
 }
 /** Non-Commander decks you've typed before, for each format's deck box. */
-export function otherDecks() {
+export function otherDecks() { return remember('otherDecks', '', otherDecksNow); }
+function otherDecksNow() {
   const out = {};
-  S.games.forEach(g => {
+  counted().forEach(g => {
     if (!g.format || g.format === 'Commander' || g.set) return;
     const name = String(g.deckName || '').trim(); if (!name) return;
     const k = (g.format + '|' + name).toLowerCase(), t = Date.parse(g.date) || 0;
@@ -327,9 +340,10 @@ export function otherDecks() {
   return Object.keys(out).map(k => out[k]).sort((a, b) => b.last - a.last);
 }
 /** How often and how recently each deck was played (for "Played recently" in the deck picker). */
-export function deckPlays() {
+export function deckPlays() { return remember('deckPlays', '', deckPlaysNow); }
+function deckPlaysNow() {
   const out = {};
-  S.games.forEach(g => {
+  counted().forEach(g => {
     if (!g.deckId) return;
     const s = out[g.deckId] || (out[g.deckId] = { plays: 0, last: 0 });
     s.plays++; s.last = Math.max(s.last, (Date.parse(g.date) || 0) + g.created / 1e13);
@@ -340,7 +354,7 @@ export function deckPlays() {
 export function withRecords(events) {
   const rec = {};
   S.games.forEach(g => {
-    if (!g.eventId) return;
+    if (!g.eventId || g.deleted) return;
     const r = rec[g.eventId] || (rec[g.eventId] = { wins: 0, losses: 0, draws: 0 });
     if (g.resultType === 'Win') r.wins++; else if (g.resultType === 'Loss') r.losses++; else r.draws++;
   });

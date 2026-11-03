@@ -27,10 +27,16 @@ export function touch() {
   S.draft.updatedAt = Date.now();
   store(draftKey(), S.draft);
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { if (S.draft) D.pushDraft(uid(), S.draft); }, 2000);
+  pushTimer = setTimeout(() => { pushTimer = null; if (S.draft) D.pushDraft(uid(), S.draft); }, 2000);
 }
 H.touch = () => touch();
 H.dropDraft = () => dropDraft();
+/** Sends the game in progress now instead of in two seconds (the app is closing or going to the background). */
+export function flushDraft() {
+  if (!pushTimer) return;
+  clearTimeout(pushTimer); pushTimer = null;
+  if (S.draft) D.pushDraft(uid(), S.draft);
+}
 export function dropDraft() {
   const id = S.draft && S.draft.id;
   S.draft = null; store(draftKey(), null); clearTimeout(pushTimer);
@@ -57,6 +63,32 @@ export function onRemoteDraft(r) {
   } else if ((local.updatedAt || 0) > (r.at || 0)) D.pushDraft(uid(), local); // started offline: send it up now
 }
 
+/* ---------- a quick copy of Recent games, so the list shows right away while the database opens ---------- */
+// Only for showing: editing or deleting waits for the real copy (it's needed for the game's history).
+const gamesKey = () => 'smb_games_' + uid();
+const CACHE_FIELDS_SKIP = { raw: 1, doc: 1, pending: 1, cached: 1 };
+let cacheTimer = null;
+export function loadGamesCache() {
+  S.games = []; S.gamesLoaded = false; S.cachedCount = null;
+  const c = store(gamesKey());
+  if (!c || !Array.isArray(c.list)) return;
+  S.games = c.list.map(g => Object.assign(g, { cached: true, pending: false, deleted: false, opponents: g.opponents || [] }));
+  S.cachedCount = +c.count || S.games.length;
+}
+export function saveGamesCache() {
+  clearTimeout(cacheTimer);
+  cacheTimer = setTimeout(() => {
+    if (!S.user || !S.gamesLoaded) return;
+    const live = liveGames(), slim = g => { const o = {}; for (const k in g) if (!CACHE_FIELDS_SKIP[k]) o[k] = g[k]; return o; };
+    // newest 400 is plenty for the first screen and typing suggestions; everything else arrives a moment later
+    store(gamesKey(), { at: Date.now(), count: live.length, list: live.slice(0, 400).map(slim) });
+  }, 1500);
+}
+export function clearGamesCache() { clearTimeout(cacheTimer); store(gamesKey(), null); }
+/** How many games you've logged, or null while that isn't known yet. */
+export function gameCount() { return S.gamesLoaded ? liveGames().length : S.cachedCount; }
+const stillLoading = g => { if (g && g.cached) { toast('Still loading your games. Try again in a second.', true); return true; } return false; };
+
 /* ---------- small pieces ---------- */
 function manaPicker(who, cur) {
   cur = String(cur || '');
@@ -80,10 +112,11 @@ export function homeGameHtml() {
       '<p class="muted">' + esc((isCmd(d) ? d.deckName : deckLabel(d)) || 'No deck chosen yet') + (d.gameId ? '' : ', started ' + esc(when)) + '</p>' +
       '<div class="row" style="margin-top:12px"><button class="btn primary" data-act="resume">Resume</button><button class="btn" data-act="discard">Discard</button></div></section>';
   }
-  const waiting = S.games.filter(g => g.pending).length;
-  if (waiting && !navigator.onLine) {
+  const waiting = waitingToSync();
+  if (waiting) {
     h += '<section class="resume"><strong>' + (waiting === 1 ? '1 game is' : waiting + ' games are') + ' waiting to sync</strong>' +
-      '<p class="muted">Saved on this device. ' + (waiting === 1 ? 'It syncs' : 'They sync') + ' on ' + (waiting === 1 ? 'its' : 'their') + ' own once you\u2019re back online.</p></section>';
+      '<p class="muted">Saved on this device. ' + (waiting === 1 ? 'It syncs' : 'They sync') + ' on ' + (waiting === 1 ? 'its' : 'their') + ' own once ' +
+      (navigator.onLine ? 'the connection is better' : 'you\u2019re back online') + '. Closing the app is fine.</p></section>';
   }
   if (S.lastGame && !d) {
     h += '<section class="resume rematch"><strong>Play again?</strong><p class="muted">Same pod and seats. You can change commanders before starting.</p>' +
@@ -99,6 +132,18 @@ export function homeGameHtml() {
   h += '<button class="btn" style="margin-top:10px" data-act="quick">Log a game without the life counter</button>';
   return h;
 }
+
+/** Games saved here but not yet in your account: offline, or still not sent after 20 seconds (a weak signal). */
+function waitingToSync() {
+  return S.games.filter(g => g.pending && !g.deleted && (!navigator.onLine || Date.now() - (g.updated || 0) > 20000)).length;
+}
+// a weak signal doesn't fire any event, so home checks every few seconds while games are waiting
+let shownWaiting = 0;
+setInterval(() => {
+  if (!S.user || S.view !== 'home') return;
+  const n = waitingToSync();
+  if (n !== shownWaiting) { shownWaiting = n; H.rerenderKeep(); }
+}, 5000);
 
 /* ---------- new game ---------- */
 function formatBlock(d) {
@@ -192,7 +237,7 @@ export function viewSetup() {
   }
   if (d.quick && !d.gameId) {
     h += '<div class="field" style="margin-top:18px"><span class="label">Who went first? (optional)</span>' +
-      seg('first', lcKeys().map(k => ({ val: k, label: lcInfo(k).name })), d.firstKey || '') +
+      seg('first', lcKeys().map(k => ({ val: k, label: lcInfo(k).name })), d.firstKey || '', { cls: 'names' }) +
       '<p class="muted" style="margin-top:6px"><small>Sets everyone\u2019s turn order, counting clockwise from that player.</small></p></div>';
   }
   h += '<div class="bar"><div class="inner"><button class="btn primary" data-act="start">' + (d.quick && d.stage === 'setup' ? 'Next: results' : d.gameId || d.stage === 'ending' ? 'Back to results' : (d.stage === 'setup' ? 'Start game' : 'Back to game')) + '</button></div></div>';
@@ -246,14 +291,14 @@ export function viewEnd() {
     h += '<label style="display:flex;gap:10px;align-items:center;margin:6px 0 2px"><input type="checkbox" data-field="draw"' + (d.draw ? ' checked' : '') + ' style="width:22px;height:22px"> Draw or shared win</label>';
   }
   if (!two && d.myPlace && +d.myPlace > 1 && !d.draw) {
-    h += '<div class="field"><span class="label">Who won?</span>' + seg('winner', d.opponents.map((o, i) => ({ val: i, label: oppName(o, i) })), winnerIdx) + '</div>';
+    h += '<div class="field"><span class="label">Who won?</span>' + seg('winner', d.opponents.map((o, i) => ({ val: i, label: oppName(o, i) })), winnerIdx, { cls: 'names' }) + '</div>';
   }
   const youWon = +d.myPlace === 1;
   h += '<div class="field"><label for="wc">' + (youWon ? 'How did you win?' : 'How did the winner win?') + '</label><select id="wc" data-field="winCondition">' + opts(WINCONS, d.winCondition) + '</select></div>';
   if (d.winCondition === 'Other') h += '<div class="field"><label for="wo">Describe it</label><input type="text" id="wo" data-field="winOther" value="' + esc(d.winOther) + '"></div>';
   if (d.myPlace && +d.myPlace > 1) {
     const names = d.opponents.map((o, i) => oppName(o, i)).concat(['Myself']);
-    h += '<div class="row"><div class="field"><label for="eb">Who knocked you out?</label><select id="eb" data-field="elimBy">' + opts(names, d.elimBy) + '</select></div>' +
+    h += '<div class="row endrow"><div class="field"><label for="eb">Who knocked you out?</label><select id="eb" data-field="elimBy">' + opts(names, d.elimBy) + '</select></div>' +
       '<div class="field"><label for="eh">How?</label><select id="eh" data-field="elimHow">' + opts(WINCONS, d.elimHow) + '</select></div></div>';
   }
   h += '<div class="field"><label for="turns">Rounds</label><input type="number" inputmode="numeric" min="1" id="turns" data-field="turns" value="' + esc(d.turns) + '"></div>';
@@ -285,6 +330,7 @@ export function viewRecent() {
       '<button class="btn" data-act="seldone">Done</button></div>';
   } else if (list.length) h += '<p class="muted" style="margin:-4px 0 10px"><small>Tap a game to edit it. Press and hold for more options.</small></p>';
   if (!list.length) h += '<p class="muted">' + (S.gamesLoaded ? 'No games logged yet. Your first one will show up here.' : 'Loading your games\u2026') + '</p>';
+  const total = gameCount() || list.length;
   shown.forEach(g => {
     const other = g.format && g.format !== 'Commander';
     const deck = other ? null : deckById(g.deckId);
@@ -297,10 +343,12 @@ export function viewRecent() {
       '<span class="stripe" style="background:' + manaGradient(colors) + '"></span>' +
       '<span class="place' + (+g.myPlace === 1 && !g.draw ? ' first' : '') + '">' + esc(place) + '</span>' +
       '<span class="txt"><span class="name">' + esc(g.deckName || (other ? g.format : 'Unknown deck')) + '</span><span class="sub">' + esc(niceDate(g.date)) +
-      (other ? ', ' + esc(g.format) + (g.matchScore ? ' ' + esc(g.matchScore) : '') : (g.podSize ? ', ' + esc(g.podSize) + ' players' : '')) + (opps ? ', vs ' + esc(opps) : '') +
-      (g.pending ? ' <span class="pill sync">Not synced yet</span>' : '') + (g.locked ? ' <span class="pill">Locked</span>' : '') + '</span></span></button>';
+      (other ? ', ' + esc(g.format) + (g.matchScore ? ' ' + esc(g.matchScore) : '') : (g.podSize ? ', ' + esc(g.podSize) + ' players' : '')) +
+      (g.pending ? ' <span class="pill sync">Not synced yet</span>' : '') + (g.locked ? ' <span class="pill">Locked</span>' : '') + '</span>' +
+      (opps ? '<span class="vs">vs ' + esc(opps) + '</span>' : '') + '</span></button>';
   });
-  if (list.length > shown.length) h += '<button class="btn" style="margin-top:10px" data-act="recentmore">Show more <small class="muted">(' + shown.length + ' of ' + list.length + ')</small></button>';
+  if (total > shown.length) h += '<button class="btn" style="margin-top:10px" data-act="recentmore"' + (list.length > shown.length ? '' : ' disabled') + '>' +
+    (list.length > shown.length ? 'Show more' : 'Loading the rest\u2026') + ' <small class="muted">(' + shown.length + ' of ' + total + ')</small></button>';
   const g = S.gameMenu && gameById(S.gameMenu);
   if (g) {
     h += '<div class="actscrim" data-act="menuclose"></div><div class="actsheet" role="dialog" aria-label="Game options"><div class="inner">' +
@@ -513,6 +561,7 @@ function saveGame(btn) {
   if (!d.myPlace) return toast(isCmd(d) ? 'Choose where you finished.' : 'Choose how it went.', true);
   const prev = d.gameId ? gameById(d.gameId) : null;
   if (d.gameId && !prev) return toast('That game isn\u2019t on this device yet. Try again in a moment.', true);
+  if (stillLoading(prev)) return;
   if (lockedFor(prev)) return toast('This game is locked.', true);
   btn.disabled = true;
   const rec = toRecord(d, prev), me = uid(), edited = !!d.gameId, id = d.gameId || d.id;
@@ -530,6 +579,7 @@ function saveGame(btn) {
   H.go('home');
 }
 function hide(ids) {
+  if (ids.map(gameById).some(g => g && g.cached)) { stillLoading({ cached: true }); return -1; }
   const items = ids.map(gameById).filter(g => g && !lockedFor(g)).map(g => ({ id: g.gameId, prev: g.doc || g.raw }));
   if (!items.length) return 0;
   D.hideGames(uid(), items, err => toast('Couldn\u2019t delete: ' + ((err && (err.code || err.message)) || err), true));
@@ -609,7 +659,8 @@ export function onAct(act, el) {
     case 'save': saveGame(el); return true;
     case 'delete':
       if (!confirm('Delete this game?')) return true;
-      hide([d.gameId]); dropDraft(); toast('Game deleted'); H.go('home'); return true;
+      if (hide([d.gameId]) < 0) return true;
+      dropDraft(); toast('Game deleted'); H.go('home'); return true;
     case 'shareend': openShare(shareText(Object.assign({}, d, { deckName: isCmd(d) ? d.deckName : deckLabel(d), format: isCmd(d) ? 'Commander' : d.format, set: d.event ? d.event.set : d.set,
       matchScore: d.bo3 && d.matchW != null && d.matchL != null ? d.matchW + '-' + d.matchL : '' }))); return true;
     case 'edit': {
@@ -646,6 +697,7 @@ export function onAct(act, el) {
       const g = act === 'menudel' ? gameById(S.gameMenu) : null;
       if (!confirm(g ? 'Delete ' + (g.deckName || g.format) + ' from ' + niceDate(g.date) + '?' : 'Delete ' + ids.length + (ids.length === 1 ? ' game' : ' games') + '?')) return true;
       const n = hide(ids);
+      if (n < 0) return true;
       S.gameMenu = null; S.sel = null;
       toast(n === 1 ? 'Game deleted' : n + ' games deleted'); K(); return true;
     }

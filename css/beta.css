@@ -27,3 +27,12 @@ input[type=search] { width: 100%; font: inherit; font-size: 17px; color: var(--i
 .overlay input[type=search] { margin-top: 2px; }
 /* life counter overlays are always dark, so unselected toggles there need light text on a dark button */
 .lcov .seg button:not(.on) { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.22); }
+/* 2c: long names and opponent lists wrap instead of being cut off */
+.game .name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; }
+.game .sub { white-space: normal; line-height: 1.35; margin-top: 2px; }
+.game .sub .pill { margin-left: 2px; white-space: nowrap; }
+.game .vs { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.seg.names { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.seg.names button { min-width: 0; overflow-wrap: anywhere; line-height: 1.2; }
+.row.endrow { align-items: flex-end; }
+.btn:disabled small { opacity: .8; }
