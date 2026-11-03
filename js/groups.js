@@ -16,7 +16,13 @@ const cleanCode = t => String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const isAdmin = g => (g.admins || []).indexOf(uid()) !== -1;
 const ownerOf = g => g.owner || g.createdBy;
 const isOrganizer = g => ownerOf(g) === uid();
-H.personName = u => (G5.people[u] && G5.people[u].name) || '';
+/** A playgroup-mate's name, with their friend code when someone else in your playgroups has the same name. */
+H.personName = u => {
+  const p = G5.people[u]; if (!p || !p.name) return '';
+  const k = p.name.trim().toLowerCase();
+  const twin = Object.keys(G5.people).some(o => o !== u && G5.people[o] && String(G5.people[o].name || '').trim().toLowerCase() === k);
+  return twin && p.code ? p.name + ' (' + p.code + ')' : p.name;
+};
 const online = () => { if (navigator.onLine) return true; toast('You\u2019re offline. Try again when you\u2019re back online.', true); return false; };
 const rr = () => { if (S.view === 'groups' || S.view === 'group' || S.view === 'join' || S.view === 'home') H.rerenderKeep(); };
 

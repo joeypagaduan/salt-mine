@@ -27,6 +27,8 @@ export const myName = () => String((S.profile && S.profile.name) || '').trim();
 export const deckById = id => S.decks.find(d => d.id === String(id));
 export const oppName = (o, i) => (o && String(o.player || '').trim()) || 'Opponent ' + (i + 1);
 export const shortCmd = n => String(n || '').split(',')[0].split(' // ')[0];
+/** "Atraxa" or "Tana + Tymna": your commanders, for a game where your seat has no deck from your list (Phase 5b). */
+export const cmdLabel = g => [g && g.c1, g && g.c2].filter(Boolean).map(shortCmd).join(' + ');
 export function toggleColor(cur, c) { cur = String(cur || ''); const s = cur.indexOf(c) !== -1 ? cur.replace(c, '') : cur + c; return 'WUBRG'.split('').filter(x => s.indexOf(x) !== -1).join(''); }
 
 /* ---------- the game in progress ---------- */

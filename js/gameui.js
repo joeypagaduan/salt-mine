@@ -9,7 +9,7 @@ import {
   WINCONS, LIFE_CHOICES, MANA_BTN, FORMAT_DEFAULTS, DRAW_RESULT, ordinal, niceDate, range, myName, deckById, oppName, shortCmd, toggleColor,
   newDraft, resizePod, formatList, isCmd, fmtOf, teamSize, sides, teammates, otherTeam, deckLabel, activeEvent, eventLabel, recordText,
   applyFormat, matchToPlaces, plural, lcKeys, lcInfo, assignTurnOrder, ensureFirstPlayer, shareText, rematchFrom, gameToDraft,
-  toRecord, fromRecord, knownPlayers, otherDecks, deckPlays
+  toRecord, fromRecord, knownPlayers, otherDecks, deckPlays, cmdLabel
 } from './game.js';
 
 import { homeStatsHtml } from './stats.js';
@@ -194,11 +194,24 @@ function quickPlayers(i) {
   const d = S.draft;
   if (String(d.opponents[i].player || '').trim()) return '';
   const used = d.opponents.map(o => String(o.player || '').toLowerCase()), usedUids = d.opponents.map(o => o.uid).filter(Boolean);
-  const linked = mates().filter(m => usedUids.indexOf(m.uid) === -1).slice(0, 6);
-  const list = knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1).slice(0, 8 - Math.min(linked.length, 4));
-  if (!list.length && !linked.length) return '';
-  return '<div class="chips">' + linked.map(m => '<button type="button" class="linked" data-act="pickplayer" data-i="' + i + '" data-name="' + esc(m.name) + '" data-uid="' + esc(m.uid) + '">' + esc(m.name) + '</button>').join('') +
-    list.map(p => '<button type="button" data-act="pickplayer" data-i="' + i + '" data-name="' + esc(p.name) + '">' + esc(p.name) + '</button>').join('') + '</div>';
+  // up to six, the people you've played with most first; playgroup-mates (outlined) link the seat to their account
+  const known = knownPlayers(), counts = {};
+  known.forEach(p => { counts[p.name.toLowerCase()] = p; });
+  const picks = [];
+  mates().forEach(m => {
+    if (usedUids.indexOf(m.uid) !== -1 || used.indexOf(m.name.toLowerCase()) !== -1) return;
+    const k = counts[m.name.toLowerCase()];
+    picks.push({ name: m.name, uid: m.uid, count: k ? k.count : 0, last: k ? k.last : 0 });
+  });
+  known.forEach(p => {
+    if (used.indexOf(p.name.toLowerCase()) !== -1 || picks.some(x => x.name.toLowerCase() === p.name.toLowerCase())) return;
+    picks.push({ name: p.name, uid: null, count: p.count, last: p.last });
+  });
+  const list = picks.sort((a, b) => b.count - a.count || b.last - a.last || !!b.uid - !!a.uid).slice(0, 6);
+  if (!list.length) return '';
+  return '<div class="chips">' + list.map(p => '<button type="button"' + (p.uid ? ' class="linked"' : '') + ' data-act="pickplayer" data-i="' + i + '" data-name="' + esc(p.name) + '"' +
+    (p.uid ? ' data-uid="' + esc(p.uid) + '"' : '') + '>' + esc(p.name) + '</button>').join('') + '</div>' +
+    '<p class="muted" style="margin:4px 0 0"><small>Someone else? Start typing their name.</small></p>';
 }
 function c2SlotHtml(o, i) {
   if (o.c2 || o.showC2) {
@@ -284,7 +297,15 @@ export function viewEnd() {
   let h = '<header class="top"><button class="link back" data-act="' + back[0] + '">\u2039 ' + back[1] + '</button><button class="link" data-act="editsetup">Edit pod</button></header>';
   h += '<h1>' + (d.gameId ? 'Edit game' : d.quick ? 'Log a game' : 'How did it go?') + '</h1>';
   const cmd = isCmd(d), two = sides(d) === 2, team = teamSize(d);
-  h += '<p class="muted" style="margin-top:4px">' + esc(cmd ? (d.deckName || 'No deck chosen') : deckLabel(d) + (deckLabel(d).indexOf(d.format) === -1 ? ', ' + d.format : '')) + ', ' + esc(niceDate(d.date)) + '</p>';
+  const prevG = d.gameId ? gameById(d.gameId) : null, myCmd = cmdLabel(d.deckId ? deckById(d.deckId) : prevG);
+  h += '<p class="muted" style="margin-top:4px">' + esc(cmd ? (d.deckName || myCmd || 'No deck chosen') : deckLabel(d) + (deckLabel(d).indexOf(d.format) === -1 ? ', ' + d.format : '')) + ', ' + esc(niceDate(d.date)) + '</p>';
+  // who played what, so the game is easy to recognize (tap Edit pod to change any of it)
+  const pod = d.opponents.filter(o => String(o.player || '').trim() || o.c1 || o.deck);
+  if (pod.length) {
+    h += '<ul class="podlist">' + (cmd && myCmd ? '<li><b>You</b><span>' + esc(myCmd) + '</span></li>' : '') +
+      d.opponents.map((o, i) => (String(o.player || '').trim() || o.c1 || o.deck) ? '<li><b>' + esc(oppName(o, i)) + (o.team === 'A' ? ' <small class="muted">(team)</small>' : '') + '</b><span>' +
+        esc(cmd ? [o.c1, o.c2].filter(Boolean).map(shortCmd).join(' + ') : o.deck || '') + '</span></li>' : '').join('') + '</ul>';
+  }
   if (!cmd && d.event) h += '<p class="muted">Part of ' + esc(eventLabel({ set: d.event.set, format: d.format, store: d.event.store })) + '</p>';
   if (!cmd && d.bo3 && two) {
     h += '<div class="field"><span class="label">Games ' + (team ? 'your team' : 'you') + ' won</span>' + seg('mw', [0, 1, 2], d.matchW) + '</div>';
@@ -350,7 +371,7 @@ export function viewRecent() {
       (sel ? '<span class="tick" aria-hidden="true">' + (on ? TICK : '') + '</span>' : '') +
       '<span class="stripe" style="background:' + manaGradient(colors) + '"></span>' +
       '<span class="place' + (+g.myPlace === 1 && !g.draw ? ' first' : '') + '">' + esc(place) + '</span>' +
-      '<span class="txt"><span class="name">' + esc(g.deckName || (other ? g.format : 'Unknown deck')) + '</span><span class="sub">' + esc(niceDate(g.date)) +
+      '<span class="txt"><span class="name">' + esc(g.deckName || (other ? g.format : cmdLabel(g) || 'Unknown deck')) + '</span><span class="sub">' + esc(niceDate(g.date)) +
       (other ? ', ' + esc(g.format) + (g.matchScore ? ' ' + esc(g.matchScore) : '') : (g.podSize ? ', ' + esc(g.podSize) + ' players' : '')) +
       (g.pending ? ' <span class="pill sync">Not synced yet</span>' : '') + (g.locked ? ' <span class="pill">Locked</span>' : '') +
       (g.updatedBy && g.createdBy && g.updatedBy !== g.createdBy ? ' <span class="pill sync">Edited by ' + esc(g.updatedBy === uid() ? 'you' : (H.personName && H.personName(g.updatedBy)) || 'a player') + '</span>' : '') + '</span>' +
@@ -459,7 +480,7 @@ function suggest(kind, i, q) {
     const used = d.opponents.filter((x, k) => k !== i).map(x => String(x.player).toLowerCase());
     const usedUids = d.opponents.filter((x, k) => k !== i).map(x => x.uid).filter(Boolean);
     const linked = mates().filter(m => usedUids.indexOf(m.uid) === -1 && (!ql || m.name.toLowerCase().indexOf(ql) !== -1))
-      .map(m => ({ label: m.name, value: m.name, uid: m.uid, sub: 'Playgroup: ' + m.group }));
+      .map(m => ({ label: m.name, value: m.name, uid: m.uid, sub: 'Playgroup: ' + m.group + (m.code ? ', ' + m.code : '') }));
     return linked.slice(0, 4).concat(knownPlayers().filter(p => used.indexOf(p.name.toLowerCase()) === -1 && (!ql || p.name.toLowerCase().indexOf(ql) !== -1))
       .sort((a, b) => (b.name.toLowerCase().startsWith(ql) - a.name.toLowerCase().startsWith(ql)) || b.count - a.count)
       .slice(0, 8).map(p => ({ label: p.name, value: p.name, sub: p.count ? p.count + (p.count === 1 ? ' game' : ' games') : '' }))).slice(0, 10);
@@ -542,7 +563,8 @@ function bindTypeahead(input) {
     }
   };
   const pick = it => { if (!it) return; input.value = it.value; list.hidden = true; setField(kind, i, it.value, true, it); };
-  input.addEventListener('focus', show);
+  input.addEventListener('focus', () => { show(); keepInView(input, list); });
+  input.addEventListener('click', () => { if (list.hidden) show(); keepInView(input, list); });
   input.addEventListener('input', () => { setField(kind, i, input.value, false); show(); });
   input.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 180));
   input.addEventListener('keydown', e => {
@@ -553,6 +575,26 @@ function bindTypeahead(input) {
     else if (e.key === 'Escape') { list.hidden = true; }
   });
   list.addEventListener('mousedown', e => { const li = e.target.closest('li'); if (li) { e.preventDefault(); pick(items[+li.dataset.k]); } });
+}
+/**
+ * On a phone, the keyboard covers the bottom half of the screen: scroll the box being typed in up near the top,
+ * so its suggestions show between it and the keyboard, and keep the list short enough to fit there.
+ */
+function keepInView(input, list) {
+  document.body.classList.add('typing');
+  const fit = () => {
+    const vv = window.visualViewport, h = vv ? vv.height : window.innerHeight;
+    const r = input.getBoundingClientRect(), offset = vv ? vv.offsetTop : 0;
+    const room = h + offset - r.bottom - 12;
+    list.style.maxHeight = Math.max(140, room) + 'px';
+    if (r.top < offset + 60 || r.bottom > offset + h * 0.45) window.scrollBy({ top: r.top - offset - 70, behavior: 'smooth' });
+  };
+  setTimeout(fit, 60); setTimeout(fit, 350); // again once the keyboard has finished opening
+  if (window.visualViewport && !input._vv) {
+    input._vv = () => { if (document.activeElement === input) fit(); };
+    window.visualViewport.addEventListener('resize', input._vv);
+  }
+  if (!input._unt) { input._unt = true; input.addEventListener('blur', () => setTimeout(() => { if (!(document.activeElement && document.activeElement.matches('input[data-ta]'))) document.body.classList.remove('typing'); }, 200)); }
 }
 /** Called after every render. */
 export function afterRender() {

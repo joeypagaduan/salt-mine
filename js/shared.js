@@ -21,7 +21,7 @@ export function mates() {
   GROUPS.groups.forEach(g => (g.members || []).forEach(m => {
     if (m === me || out[m]) return;
     const p = GROUPS.people[m];
-    out[m] = { uid: m, name: p ? p.name : '', code: p ? p.code : '', via: g.id, group: g.name };
+    out[m] = { uid: m, name: p ? H.personName(m) || p.name : '', code: p ? p.code : '', via: g.id, group: g.name };
   }));
   return Object.keys(out).map(k => out[k]).filter(x => x.name).sort((a, b) => a.name.localeCompare(b.name));
 }

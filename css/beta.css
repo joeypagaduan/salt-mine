@@ -86,3 +86,9 @@ header.top h3 { min-width: 0; flex: 1; text-align: center; overflow: hidden; tex
 .inboxbar { border-color: var(--accent); }
 .person .acts { align-items: flex-end; }
 .person .acts .link { padding: 2px 0; font-size: 14px; }
+/* Phase 5b fixes: the pod on the edit screen, and room for suggestions above the phone keyboard */
+.podlist { list-style: none; padding: 10px 14px; margin: 10px 0 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.podlist li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; line-height: 1.3; }
+.podlist li span { color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.ta-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+body.typing { padding-bottom: 60vh; }
