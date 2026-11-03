@@ -1,7 +1,7 @@
 // Game screens, ported from classic 1.13: home banners, new game setup, the round counter, results,
 // Recent games (with the press-and-hold menu and multi-select delete), rematch and share.
-// The full life counter replaces the round counter in Phase 2b.
-import { S, uid } from './state.js';
+// The life counter itself is in lifecounter.js.
+import { S, uid, H } from './state.js';
 import { esc, store, toast, seg, manaGradient } from './util.js';
 import * as D from './data.js';
 import { CMD, searchCmds, partnerPredicate, secondLabel, cmdEntry, ensureCommanders } from './commanders.js';
@@ -12,8 +12,8 @@ import {
   toRecord, fromRecord, knownPlayers, otherDecks, deckPlays
 } from './game.js';
 
-// Set by app.js: navigation and shared deck helpers
-export const H = { go: null, render: null, rerenderKeep: null, setSettings: null, pickerDecks: () => [], deckCard: null, newDeck: null };
+import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
+export { H, lcResetUi, lcClick };
 const app = document.getElementById('app');
 const EDITING = ['setup', 'playing', 'ending'];
 export const isEditingView = v => EDITING.indexOf(v) !== -1;
@@ -29,6 +29,8 @@ export function touch() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => { if (S.draft) D.pushDraft(uid(), S.draft); }, 2000);
 }
+H.touch = () => touch();
+H.dropDraft = () => dropDraft();
 export function dropDraft() {
   const id = S.draft && S.draft.id;
   S.draft = null; store(draftKey(), null); clearTimeout(pushTimer);
@@ -209,6 +211,7 @@ function seatList() {
     (isCmd(d) ? '<br><small class="muted">' + esc(r.cmd || 'Commander not entered') + '</small>' : '') + '</span></li>').join('') + '</ul>';
 }
 export function viewPlaying() {
+  if (S.settings.gameMode !== 'simple') return lcHtml();
   const d = S.draft, deck = deckById(d.deckId);
   let h = '<header class="top"><button class="link back" data-act="home">\u2039 Home</button><button class="link" data-act="editsetup">Edit pod</button></header>';
   h += '<div style="display:flex;gap:12px;align-items:center"><span class="stripe" style="height:44px;background:' + manaGradient(isCmd(d) ? (deck ? deck.colors : 'C') : d.myColors || 'C') + '"></span><div><h1 style="font-size:30px">' + esc((isCmd(d) ? d.deckName : deckLabel(d)) || 'No deck') + '</h1>' +
@@ -216,7 +219,6 @@ export function viewPlaying() {
   h += '<div class="counter"><button data-act="turn-" aria-label="Previous round">\u2212</button><output id="turnout"><b>' + esc(d.turns || 1) + '</b><span>Round</span></output><button class="plus" data-act="turn+" aria-label="Next round">+</button></div>';
   h += '<h2>Turn order</h2><div class="panel">' + seatList() + '</div>';
   h += '<div class="field"><label for="notes">Notes</label><textarea id="notes" data-field="notes" placeholder="Big plays, misplays, salt">' + esc(d.notes) + '</textarea></div>';
-  h += '<p class="muted"><small>The full life counter comes in the next update. For now this keeps the round count and turn order.</small></p>';
   h += '<div class="bar"><div class="inner"><button class="btn primary" data-act="end">End game</button></div></div>';
   return h;
 }
@@ -494,6 +496,7 @@ function bindTypeahead(input) {
 }
 /** Called after every render. */
 export function afterRender() {
+  lcAfterRender();
   app.querySelectorAll('input[data-ta]').forEach(bindTypeahead);
   const q = document.getElementById('pickq');
   if (q) q.addEventListener('input', () => { document.getElementById('picklist').innerHTML = pickerListHtml(q.value); });
@@ -594,8 +597,8 @@ export function onAct(act, el) {
       if (!isCmd(d)) d.deckName = deckLabel(d);
       if (d.gameId || d.stage === 'ending' || d.quick) { rememberPlayers(); d.stage = 'ending'; touch(); H.go('ending'); return true; }
       ensureFirstPlayer(); rememberPlayers();
-      d.stage = 'playing'; d.turns = +d.turns || 1; touch();
-      if (d.announceFirst) { d.announceFirst = false; toast(lcInfo(d.firstKey).name + (plural(d.firstKey) ? ' go first' : ' goes first')); }
+      d.stage = 'playing'; touch();
+      if (S.settings.gameMode === 'simple' && d.announceFirst) { d.announceFirst = false; toast(lcInfo(d.firstKey).name + (plural(d.firstKey) ? ' go first' : ' goes first')); }
       H.go('playing'); return true;
     case 'editsetup': H.go('setup'); return true;
     case 'turn+': case 'turn-':
@@ -678,6 +681,7 @@ export function onSegG(name, val) {
 }
 /** Typing in a game screen's fields. */
 export function onInputG(t) {
+  if (lcEmblemSearch(t)) return true;
   const ds = t.dataset || {};
   if (ds.field && S.draft) { if (ds.field !== 'draw') { S.draft[ds.field] = t.value; touch(); } return true; }
   if (ds.ev && S.draft && S.draft.event) { S.draft.event[ds.ev] = t.value; touch(); return true; }
@@ -722,7 +726,25 @@ app.addEventListener('contextmenu', e => { if (e.target.closest && e.target.clos
 
 /* ---------- Settings: formats and the commander list ---------- */
 export function settingsGameHtml() {
-  let h = '<details class="collapse" id="fmtsec"' + (S.open.fmtsec ? ' open' : '') + '><summary><h2 style="display:inline">Formats</h2></summary>' +
+  const st = S.settings;
+  let h = '<details class="collapse" id="lcsec"' + (S.open.lcsec ? ' open' : '') + '><summary><h2 style="display:inline">During games</h2></summary>';
+  h += '<div class="field"><span class="label">Start a game opens</span>' + seg('gamemode', [{ val: 'life', label: 'Life counter' }, { val: 'simple', label: 'Round counter only' }], st.gameMode || 'life') + '</div>';
+  h += '<div class="field"><span class="label">Turn reminders</span>' + seg('reminders', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.reminders === false ? 'off' : 'on') +
+    '<p class="muted" style="margin-top:6px"><small>Shows \u201Cdraw a card\u201D when the monarch passes the turn, \u201Cventure into the Undercity\u201D for the player with the initiative, and a rad counter reminder two seconds into the turn of anyone with rads.</small></p></div>';
+  h += '<div class="field"><span class="label">Full screen</span>' + seg('fullscreen', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.fullscreen === false ? 'off' : 'on') +
+    '<p class="muted" style="margin-top:6px"><small>Hides the browser bars when supported. Swipe from the edge or turn this off to get them back. (A home screen app is already full screen.)</small></p></div>';
+  h += '<span class="label" style="margin-top:14px">Life counter layout</span><p class="muted" style="margin-top:0"><small>How players are arranged around the phone for each pod size. The highlighted spot is you.</small></p>';
+  [2, 3, 4, 5, 6].forEach(n => {
+    const cur = lcLayout(n).id;
+    h += '<div class="field"><span class="label">' + n + ' players</span><div class="layoutrow">' +
+      LC_LAYOUTS[n].map(lay => '<button class="layoutopt' + (lay.id === cur ? ' on' : '') + '" data-seg="layout-' + n + '" data-val="' + lay.id + '">' + layoutPreview(lay) + '<span>' + esc(lay.name) + '</span></button>').join('') + '</div></div>';
+  });
+  h += '<span class="label" style="margin-top:14px">Elimination messages</span><p class="muted" style="margin-top:0"><small>Shown over a player\u2019s panel when they\u2019re knocked out. One per line. Lines match how they died when possible, otherwise one from \u201CAny kind of death\u201D is used. Type {killer} to insert the name of whoever knocked them out.</small></p>';
+  ELIM_CATS.forEach(c => {
+    h += '<div class="field"><label for="el-' + c[0] + '">' + c[1] + '</label><textarea id="el-' + c[0] + '" data-elim="' + c[0] + '" rows="' + Math.max(3, elimLines(c[0]).length + 1) + '" autocomplete="off" spellcheck="false">' + esc(elimLines(c[0]).join('\n')) + '</textarea></div>';
+  });
+  h += '<button class="link" data-act="elimreset">Reset to the original lines</button></details>';
+  h += '<details class="collapse" id="fmtsec"' + (S.open.fmtsec ? ' open' : '') + '><summary><h2 style="display:inline">Formats</h2></summary>' +
     '<p class="muted">The formats you can pick when starting a game, besides Commander. \u201CUses a set\u201D asks for the set (for Limited). \u201CEvent\u201D groups matches into an event, like a prerelease.</p>';
   formatList().forEach((f, i) => {
     h += '<div class="panel fmtrow"><div class="row" style="align-items:end"><div class="field" style="flex:2"><label for="fn' + i + '">Name</label><input type="text" id="fn' + i + '" data-fmt="' + i + '|name" value="' + esc(f.name) + '" autocomplete="off"></div>' +
@@ -758,6 +780,9 @@ export function onSettingsAct(act, el) {
     case 'fmtreset':
       if (!confirm('Put the format list back to the original one?')) return true;
       save(FORMAT_DEFAULTS.map(x => Object.assign({}, x))); H.rerenderKeep(); return true;
+    case 'elimreset':
+      if (!confirm('Replace your elimination messages with the original lines?')) return true;
+      H.setSettings({ elimLines: null }); H.rerenderKeep(); return true;
     case 'refreshcmds':
       ensureCommanders(true).then(msg => { toast(msg || 'Up to date'); if (S.view === 'settings') H.rerenderKeep(); })
         .catch(err => { toast('Couldn\u2019t download the commander list: ' + (err.message || err), true); if (S.view === 'settings') H.rerenderKeep(); });
@@ -766,6 +791,11 @@ export function onSettingsAct(act, el) {
   return false;
 }
 export function onSettingsInput(t) {
+  const cat = t.dataset && t.dataset.elim;
+  if (cat) {
+    H.setSettings({ elimLines: Object.assign({}, S.settings.elimLines, { [cat]: t.value.split('\n').map(x => x.trim()).filter(Boolean) }) });
+    return true;
+  }
   const k = t.dataset && t.dataset.fmt;
   if (!k) return false;
   const p = k.split('|'), list = formatList(), f = list[+p[0]];
@@ -782,3 +812,29 @@ export function onSettingsChange(t) {
   f[p[1]] = t.checked; H.setSettings({ formats: list });
   return true;
 }
+
+export function onSettingsSeg(name, val) {
+  if (name === 'gamemode') { H.setSettings({ gameMode: val }); H.rerenderKeep(); return true; }
+  if (name === 'reminders') { H.setSettings({ reminders: val === 'on' }); H.rerenderKeep(); return true; }
+  if (name === 'fullscreen') {
+    H.setSettings({ fullscreen: val === 'on' });
+    if (val === 'on') { S.fsBlocked = false; fsRequest(true); } else fsExit();
+    H.rerenderKeep(); return true;
+  }
+  if (name.indexOf('layout-') === 0) { H.setSettings({ layouts: Object.assign({}, S.settings.layouts, { [name.slice(7)]: val }) }); H.rerenderKeep(); return true; }
+  return false;
+}
+
+/* ---------- full screen (from classic 1.13) ---------- */
+function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
+function fsRequest(explicit) {
+  const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!fn || fsElement() || matchMedia('(display-mode: standalone)').matches) return;
+  try {
+    const r = fn.call(el, { navigationUI: 'hide' });
+    if (r && r.catch) r.catch(() => { S.fsBlocked = true; if (explicit) toast('Your browser won\u2019t allow full screen here.', true); });
+  } catch (e) { S.fsBlocked = true; if (explicit) toast('Your browser won\u2019t allow full screen here.', true); }
+}
+function fsExit() { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn && fsElement()) try { fn.call(document); } catch (e) {} }
+// Browsers only allow full screen right after a tap, so taps during a game re-check (until the browser says no).
+document.addEventListener('click', () => { if (S.user && S.view === 'playing' && S.settings.fullscreen !== false && !S.fsBlocked) fsRequest(false); }, true);

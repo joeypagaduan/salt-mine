@@ -70,6 +70,7 @@ function splashWait() { return new Promise(r => setTimeout(r, Math.max(0, SPLASH
 
 function go(view) {
   if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
+  G.lcResetUi();
   if (G.isEditingView(view) && !S.draft) view = 'home';
   S.view = view; S.picker = false; render(); window.scrollTo(0, 0);
 }
@@ -287,6 +288,8 @@ async function doRefresh(username) {
 }
 
 app.addEventListener('click', async e => {
+  const lcBtn = e.target.closest('[data-lc]');
+  if (lcBtn) return G.lcClick(lcBtn);
   const el = e.target.closest('[data-act],[data-seg]');
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
@@ -336,6 +339,7 @@ app.addEventListener('click', async e => {
 });
 function onSeg(name, val) {
   if (G.isEditingView(S.view) && G.onSegG(name, val)) return;
+  if (G.onSettingsSeg(name, val)) return;
   if (name === 'theme') { setSettings({ theme: val }); applyTheme(S.settings); return rerenderKeep(); }
   if (name === 'custgrad') {
     const tc = themeColors(S.settings), cur = S.settings.scheme && S.settings.scheme.kind === 'custom' ? S.settings.scheme : { c1: tc.c1, c2: tc.c2 || '#2E7BC4' };

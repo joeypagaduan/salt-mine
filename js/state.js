@@ -13,3 +13,6 @@ export const S = {
   picker: false, sel: null, gameMenu: null, recentShown: 25, fmtOpen: false, lifeCustom: false
 };
 export const uid = () => S.user && S.user.uid;
+
+// Navigation and shared helpers, filled in by app.js and gameui.js so modules can call each other without import loops.
+export const H = { go: null, render: null, rerenderKeep: null, setSettings: null, pickerDecks: () => [], deckType: null, newDeck: null, touch: null, dropDraft: null };

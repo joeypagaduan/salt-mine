@@ -25,3 +25,5 @@ h2 small.muted { font-size: 15px; font-weight: 500; }
 input[type=search] { width: 100%; font: inherit; font-size: 17px; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 13px; -webkit-appearance: none; appearance: none; }
 .pill.sync { background: var(--surface2); color: var(--muted); font-weight: 600; }
 .overlay input[type=search] { margin-top: 2px; }
+/* life counter overlays are always dark, so unselected toggles there need light text on a dark button */
+.lcov .seg button:not(.on) { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.22); }
