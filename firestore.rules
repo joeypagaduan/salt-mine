@@ -70,5 +70,61 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    // Playgroups (Phase 5a). Members can see their playgroup. Only admins change it (the organizer, who made it,
+    // is always one); a member can only take themselves out. Only the organizer can delete it.
+    function groupAt(gid) { return get(/databases/$(database)/documents/groups/$(gid)).data; }
+    function groupAfter(gid) { return getAfter(/databases/$(database)/documents/groups/$(gid)).data; }
+    function isMemberOf(g) { return signedIn() && request.auth.uid in g.members; }
+    function isAdminOf(g) { return signedIn() && request.auth.uid in g.admins; }
+    function groupOk(d) {
+      return d.keys().hasOnly(['name', 'createdBy', 'createdAt', 'updatedAt', 'members', 'admins', 'invite', 'inviteOn'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && d.members is list && d.members.size() <= 50
+        && d.admins is list && d.members.hasAll(d.admins) && d.admins.hasAll([d.createdBy])
+        && d.invite is string && d.inviteOn is bool;
+    }
+    match /groups/{gid} {
+      allow read: if isMemberOf(resource.data);
+      allow create: if signedIn() && groupOk(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.admins == [request.auth.uid];
+      allow update: if groupOk(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (isAdminOf(resource.data)
+          || (isMemberOf(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt'])
+            && request.resource.data.members.toSet() == resource.data.members.toSet().difference([request.auth.uid].toSet())));
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid;
+
+      // Asking to join: only for yourself, and only with an invite that's turned on for this playgroup.
+      // You and the playgroup's admins can see the request; either can withdraw or decline it.
+      match /requests/{uid} {
+        allow read, delete: if me(uid) || isAdminOf(groupAt(gid));
+        allow create: if me(uid)
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'code', 'photo', 'token', 'at'])
+          && request.resource.data.uid == uid
+          && request.resource.data.token is string
+          && get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.gid == gid
+          && get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.on == true;
+        allow update: if false;
+      }
+    }
+
+    // Invite codes: anyone signed in can open one by its code (to see the playgroup's name), nobody can list them,
+    // and only the playgroup's admins can make, change or remove them.
+    match /invites/{token} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if token.matches('^[A-Z0-9]{10}$')
+        && request.resource.data.keys().hasOnly(['gid', 'name', 'byName', 'on', 'createdAt'])
+        && isAdminOf(groupAfter(request.resource.data.gid));
+      allow update: if request.resource.data.keys().hasOnly(['gid', 'name', 'byName', 'on', 'createdAt'])
+        && request.resource.data.gid == resource.data.gid
+        && isAdminOf(groupAfter(resource.data.gid));
+      allow delete: if isAdminOf(groupAt(resource.data.gid));
+    }
   }
 }

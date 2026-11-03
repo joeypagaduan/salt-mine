@@ -60,3 +60,23 @@ label.dupe > span { min-width: 0; }
 .filebtn { position: relative; display: block; text-align: center; overflow: hidden; margin-top: 10px; }
 .filebtn input[type=file] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 ol.steps { padding-left: 22px; margin: 10px 0; } ol.steps li { margin-bottom: 6px; line-height: 1.4; }
+/* Phase 5a: playgroups */
+.navbtn { position: relative; }
+.navbtn .dot { position: absolute; top: 12px; right: 12px; width: 12px; height: 12px; border-radius: 50%; background: var(--danger); }
+.gcard { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px; margin-bottom: 10px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); }
+.gcard .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.gcard .name { font-weight: 700; font-size: 18px; overflow-wrap: anywhere; }
+.gcard .muted { font-size: 14px; }
+.badge.warn { background: var(--danger); border-color: var(--danger); color: #fff; font-size: 14px; }
+.person { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.person .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.person .acts { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.person .link { flex: none; }
+.avatar.sm { width: 42px; height: 42px; font-size: 18px; }
+.btn.sm { padding: 10px 14px; font-size: 15px; border-radius: 12px; }
+.invite .qr { width: min(220px, 70%); margin: 4px auto 0; }
+.invite .qr svg { display: block; width: 100%; height: auto; border-radius: 8px; }
+.gwait { border-style: dashed; }
+/* headers: a long title shortens instead of wrapping the back button */
+header.top .back { white-space: nowrap; flex: none; }
+header.top h3 { min-width: 0; flex: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 8px; }

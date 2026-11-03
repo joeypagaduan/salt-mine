@@ -10,6 +10,8 @@ import { ensureCommanders } from './commanders.js';
 import * as G from './gameui.js';
 import * as ST from './stats.js';
 import * as IM from './importer.js';
+import * as GR from './groups.js';
+GR.takeJoinFromUrl();
 
 const ICON = {
   gear: '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -96,6 +98,7 @@ function startWatching(user) {
     softRender(['home', 'stats']);
   }));
   S.unsub.push(D.watchDraft(user.uid, G.onRemoteDraft));
+  GR.watchGroupsFor(user).forEach(u => S.unsub.push(u));
 }
 /** Redraws once per frame at most, however many updates arrive together (a sync can bring many at once). */
 let softRaf = 0, softViews = {};
@@ -112,11 +115,13 @@ function go(view) {
   if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
   G.lcResetUi();
   if (G.isEditingView(view) && !S.draft) view = 'home';
+  // an invite link opened the app: show it once you're signed in with a profile
+  if (view === 'home' && S.profile && S.user && GR.pendingJoin()) return;
   S.view = view; S.picker = false; render(); window.scrollTo(0, 0);
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
@@ -174,8 +179,9 @@ function viewHome() {
   h += '<div class="navgrid"><button class="navbtn" data-act="recent">' + ICON.recent + 'Recent games<small class="muted">' + (n == null ? 'Loading\u2026' : n + (n === 1 ? ' game' : ' games')) + '</small></button>' +
     '<button class="navbtn" data-act="decks">' + ICON.decks + 'Decks<small class="muted">' + live.length + ' ready</small></button>' +
     '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
-    '<button class="navbtn" disabled>' + ICON.people + 'Playgroups<small class="muted">Coming soon</small></button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 4 of 6. Bring your classic games over in Settings > Data. Playgroups arrive in a later update. Your classic Salt Mine keeps working as usual.</small></p>';
+    '<button class="navbtn" data-act="groups">' + ICON.people + 'Playgroups<small class="muted">' + esc(GR.homeBlurb()) + '</small>' +
+    (GR.waitingCount() ? '<span class="dot" aria-hidden="true"></span>' : '') + '</button></div>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 5 of 6. Playgroups are here; adding them to games comes next. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -356,7 +362,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;

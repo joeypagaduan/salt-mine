@@ -5,7 +5,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/fireba
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, onSnapshot,
-  collection, writeBatch, serverTimestamp, deleteField, query, where, Timestamp }
+  collection, writeBatch, serverTimestamp, deleteField, query, where, Timestamp, arrayUnion, arrayRemove }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
 const app = initializeApp(firebaseConfig);
@@ -207,3 +207,103 @@ export function clearDraft(uid, id) {
 }
 
 export { serverTimestamp, deleteField };
+
+/* ---------- playgroups (Phase 5a) ----------
+ * groups/{gid}: { name, createdBy, createdAt, updatedAt, members: [uid], admins: [uid], invite, inviteOn }
+ *   Members can read it. The organizer (createdBy, always an admin) changes it; members can only remove themselves.
+ * groups/{gid}/requests/{uid}: { uid, name, code, photo, token, at } a request to join, made with a working invite.
+ * invites/{token}: { gid, name, byName, on, createdAt } what an invite link shows before you join. Anyone signed in
+ *   can open one by its code, but nobody can list them.
+ * users/{uid}/joins/{gid}: { gid, name, byName, token, at } your own requests, so you can see what's still waiting.
+ */
+const INVITE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export function newInviteCode() {
+  const a = new Uint8Array(10); crypto.getRandomValues(a);
+  return Array.from(a, n => INVITE_CHARS[n % INVITE_CHARS.length]).join('');
+}
+const live = d => d.data({ serverTimestamps: 'estimate' });
+export function watchGroups(uid, cb, errCb) {
+  return onSnapshot(query(collection(db, 'groups'), where('members', 'array-contains', uid)),
+    snap => cb(snap.docs.map(d => Object.assign({ id: d.id }, live(d)))), errCb);
+}
+export function watchRequests(gid, cb, errCb) {
+  return onSnapshot(collection(db, 'groups', gid, 'requests'), snap => cb(snap.docs.map(d => Object.assign({ id: d.id }, live(d)))), errCb);
+}
+export function watchJoins(uid, cb) {
+  return onSnapshot(collection(db, 'users', uid, 'joins'), snap => cb(snap.docs.map(d => Object.assign({ id: d.id }, live(d)))), () => {});
+}
+export async function createGroup(uid, name, byName) {
+  const ref = doc(collection(db, 'groups')), token = newInviteCode(), b = writeBatch(db);
+  b.set(ref, { name: name, createdBy: uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), members: [uid], admins: [uid], invite: token, inviteOn: true });
+  b.set(doc(db, 'invites', token), { gid: ref.id, name: name, byName: byName, on: true, createdAt: serverTimestamp() });
+  await b.commit();
+  return ref.id;
+}
+export async function renameGroup(g, name) {
+  const b = writeBatch(db);
+  b.update(doc(db, 'groups', g.id), { name: name, updatedAt: serverTimestamp() });
+  if (g.invite) b.set(doc(db, 'invites', g.invite), { name: name }, { merge: true });
+  await b.commit();
+}
+export async function setInviteOn(g, on) {
+  const b = writeBatch(db);
+  b.update(doc(db, 'groups', g.id), { inviteOn: on, updatedAt: serverTimestamp() });
+  if (g.invite) b.set(doc(db, 'invites', g.invite), { on: on }, { merge: true });
+  await b.commit();
+}
+/** A new invite code; the old link stops working. */
+export async function newInvite(g, byName) {
+  const token = newInviteCode(), b = writeBatch(db);
+  if (g.invite) b.delete(doc(db, 'invites', g.invite));
+  b.set(doc(db, 'invites', token), { gid: g.id, name: g.name, byName: byName, on: true, createdAt: serverTimestamp() });
+  b.update(doc(db, 'groups', g.id), { invite: token, inviteOn: true, updatedAt: serverTimestamp() });
+  await b.commit();
+}
+export async function getInvite(token) {
+  const snap = await getDoc(doc(db, 'invites', token));
+  return snap.exists() ? Object.assign({ token: token }, snap.data()) : null;
+}
+export async function requestJoin(uid, profile, inv) {
+  const b = writeBatch(db);
+  b.set(doc(db, 'groups', inv.gid, 'requests', uid), { uid: uid, name: profile.name, code: profile.code, photo: profile.photo || '', token: inv.token, at: serverTimestamp() });
+  b.set(doc(db, 'users', uid, 'joins', inv.gid), { gid: inv.gid, name: inv.name, byName: inv.byName || '', token: inv.token, at: serverTimestamp() });
+  await b.commit();
+}
+/** Whether your request to join is still waiting (false once it's approved or declined). */
+export async function requestWaiting(gid, uid) {
+  const snap = await getDoc(doc(db, 'groups', gid, 'requests', uid));
+  return snap.exists();
+}
+export async function cancelJoin(uid, gid) {
+  const b = writeBatch(db);
+  b.delete(doc(db, 'groups', gid, 'requests', uid));
+  b.delete(doc(db, 'users', uid, 'joins', gid));
+  await b.commit();
+}
+export function dropJoin(uid, gid) { return writeBatch(db).delete(doc(db, 'users', uid, 'joins', gid)).commit(); }
+export async function approveRequest(gid, who) {
+  const b = writeBatch(db);
+  b.update(doc(db, 'groups', gid), { members: arrayUnion(who), updatedAt: serverTimestamp() });
+  b.delete(doc(db, 'groups', gid, 'requests', who));
+  await b.commit();
+}
+export function declineRequest(gid, who) { return writeBatch(db).delete(doc(db, 'groups', gid, 'requests', who)).commit(); }
+/** Removes someone (or yourself, to leave). */
+export function removeMember(gid, who) {
+  return updateDoc(doc(db, 'groups', gid), { members: arrayRemove(who), admins: arrayRemove(who), updatedAt: serverTimestamp() });
+}
+export async function leaveGroup(gid, who) {
+  return updateDoc(doc(db, 'groups', gid), { members: arrayRemove(who), updatedAt: serverTimestamp() });
+}
+export async function deleteGroup(g) {
+  const b = writeBatch(db);
+  if (g.invite) b.delete(doc(db, 'invites', g.invite));
+  b.delete(doc(db, 'groups', g.id));
+  await b.commit();
+}
+/** Public profiles (name, friend code, photo) for the people in your playgroups. */
+export async function loadProfiles(uids) {
+  const out = {};
+  await Promise.all(uids.map(u => getDoc(doc(db, 'profiles', u)).then(s => { if (s.exists()) out[u] = s.data(); }).catch(() => {})));
+  return out;
+}
