@@ -305,7 +305,7 @@ function listBlock(id, title, items, render) {
   return '<details class="collapse implist" id="' + id + '"' + (S.open[id] ? ' open' : '') + '><summary>' + title + '</summary><ul>' + items.map(render).join('') + '</ul></details>';
 }
 export function viewImport() {
-  let h = '<header class="top"><button class="link back" data-act="impback">\u2039 Settings</button><h3>Import from classic</h3><span style="width:60px"></span></header>';
+  let h = '<header class="top"><button class="link back" data-act="impback">\u2039 Data</button><h3>Import from classic</h3><span style="width:60px"></span></header>';
   if (IMP.busy) return h + '<div class="panel"><p class="status impstatus" style="margin:0">' + esc(IMP.busy) + '</p><p class="muted" style="margin:8px 0 0"><small>Keep the app open until this finishes.</small></p></div>';
   if (IMP.error) return h + '<div class="panel"><p style="margin:0">' + esc(IMP.error) + '</p></div>' + fileButton('Choose a file');
   if (IMP.done) {
@@ -393,7 +393,7 @@ export function settingsImportHtml() {
 export function onImportAct(act) {
   switch (act) {
     case 'impopen': if (!IMP.busy) { IMP.plan = null; IMP.done = null; IMP.error = ''; } H.go('import'); return true;
-    case 'impback': if (IMP.busy) return true; IMP.plan = null; IMP.done = null; IMP.error = ''; S.open.datasec = true; H.go('settings'); return true;
+    case 'impback': if (IMP.busy) return true; IMP.plan = null; IMP.done = null; IMP.error = ''; S.setSec = 'data'; H.back(); return true;
     case 'impgo': runImport(); return true;
   }
   return false;

@@ -95,3 +95,54 @@ body.typing { padding-bottom: 60vh; }
 /* Phase 5c */
 .updatebar { border-color: var(--accent); }
 .mydeckrow { margin: 10px 0 4px; }
+/* Phase 6: help pages */
+.prose { line-height: 1.5; }
+.prose h2 { margin: 18px 0 6px; }
+.prose ul { padding-left: 20px; margin: 6px 0; } .prose li { margin-bottom: 6px; }
+
+/* Phase 6: Settings menu (one column on phones, menu beside the section on tablets) */
+.setmenu { display: flex; flex-direction: column; gap: 8px; }
+.setme { display: flex; align-items: center; gap: 12px; padding: 4px 4px 10px; }
+.setme span { display: flex; flex-direction: column; min-width: 0; }
+.setme b { font-size: 19px; overflow-wrap: anywhere; }
+.setrow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 64px; padding: 12px 14px; text-align: left;
+  border: 1.5px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); }
+.setrow:active { background: var(--surface2); }
+.setrow.on { border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.setrow .ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface2); color: var(--accent); }
+.setrow .ic svg { width: 22px; height: 22px; }
+.setrow .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.setrow .txt b { font-size: 17px; }
+.setrow .txt small { color: var(--muted); font-size: 14px; line-height: 1.3; }
+.setrow .chev { flex: none; color: var(--muted); font-size: 26px; line-height: 1; }
+.setlinks { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.setwide { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 24px; align-items: start; }
+.setwide .setmenu { position: sticky; top: 12px; }
+.setwide .setmenu .setrow .chev { display: none; }
+.setpane { min-width: 0; }
+.setttl { margin-top: 4px; }
+/* What's new */
+ul.changes { list-style: none; padding: 0; margin: 8px 0 0; }
+ul.changes li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; line-height: 1.4; }
+.tag { flex: none; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--surface2); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.tag.added { color: #1f8a4c; } .tag.changed { color: var(--accent); } .tag.fixed { color: #2e7bc4; } .tag.removed { color: var(--danger); }
+/* Delete account */
+.warnpanel { border-color: var(--danger); }
+ul.dellist { padding-left: 20px; line-height: 1.5; } ul.dellist li { margin-bottom: 4px; }
+
+/* Phase 6: easy to tap on phones and tablets */
+@media (pointer: coarse) {
+  .link { min-height: 44px; padding: 10px 2px; display: inline-flex; align-items: center; }
+  .chips button { min-height: 40px; padding: 8px 14px; font-size: 15px; }
+  input[type=text], input[type=date], input[type=number], select { min-height: 48px; font-size: 16px; }
+  label.check input[type=checkbox], .fmtopts input[type=checkbox], label.dupe input { width: 24px; height: 24px; }
+  .seg button { min-height: 46px; }
+}
+/* tablets: a little roomier, with Settings using the full width for its side-by-side layout */
+@media (min-width: 760px) {
+  #app { max-width: 680px; }
+  body { font-size: 17px; }
+  body[data-view=settings] #app, body[data-view=setsec] #app { max-width: 1000px; padding-left: 28px; padding-right: 28px; }
+}
+.btn.danger { color: var(--danger); border-color: var(--danger); }

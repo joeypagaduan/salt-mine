@@ -64,7 +64,7 @@ export function settingsOwnerHtml() {
     '<button class="btn" style="margin-top:10px" data-act="owndeleted">Deleted games' + (n ? ' (' + n + ')' : '') + '</button></div>';
 }
 export function viewDeleted() {
-  let h = '<header class="top"><button class="link back" data-act="settings">\u2039 Settings</button><h3>Deleted games</h3><span style="width:60px"></span></header>';
+  let h = '<header class="top"><button class="link back" data-act="navback">\u2039 Data</button><h3>Deleted games</h3><span style="width:60px"></span></header>';
   if (!isOwner()) return h;
   const list = deletedGames();
   if (!list.length) return h + '<p class="muted">No deleted games.</p>';

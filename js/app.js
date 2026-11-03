@@ -13,6 +13,9 @@ import * as IM from './importer.js';
 import * as GR from './groups.js';
 import * as SH from './shared.js';
 import * as OW from './owner.js';
+import * as HP from './help.js';
+import * as CH from './changes.js';
+import * as AC from './account.js';
 GR.takeJoinFromUrl();
 
 const ICON = {
@@ -119,7 +122,56 @@ function softRender(views) {
   });
 }
 
-function go(view) {
+/*
+ * The phone's back button (Phase 6). Screens past home add one history entry, so Back steps to the screen before
+ * (or closes an open sheet or menu first). At home, Back leaves the app as usual.
+ */
+const BASE_VIEWS = { home: 1, loading: 1, signin: 1, noconn: 1, welcome: 1, archsetup: 1 };
+let navStack = [], navGuard = false, skipPop = 0;
+function navTrack(prev, view) {
+  if (BASE_VIEWS[view]) {
+    navStack = [];
+    if (navGuard) { navGuard = false; skipPop++; history.back(); }
+    return;
+  }
+  // an in-app back link to the screen before counts as going back, not as a new step
+  if (navStack.length && navStack[navStack.length - 1] === view) navStack.pop();
+  else if (prev && prev !== view && !BASE_VIEWS[prev]) { navStack.push(prev); if (navStack.length > 40) navStack.shift(); }
+  if (!navGuard) { history.pushState({ smb: 1 }, ''); navGuard = true; }
+}
+/** Closes whatever is open on top of the screen. Returns true when something was. */
+function closeOverlay() {
+  const x = document.querySelector('.sheetx, .actscrim');
+  if (S.picker) { S.picker = false; rerenderKeep(); return true; }
+  if (S.form) { S.form = null; rerenderKeep(); return true; }
+  if (S.sheetDeck) { S.sheetDeck = null; rerenderKeep(); return true; }
+  if (S.gameMenu) { S.gameMenu = null; rerenderKeep(); return true; }
+  if (x) { x.click(); return true; }
+  if (S.sel) { S.sel = null; rerenderKeep(); return true; }
+  return false;
+}
+window.addEventListener('popstate', () => {
+  if (skipPop) { skipPop--; return; }
+  navGuard = false;
+  if (BASE_VIEWS[S.view]) return;
+  if (closeOverlay()) { history.pushState({ smb: 1 }, ''); navGuard = true; return; }
+  if (!S.profile) { go(S.user ? 'welcome' : 'signin', true); return; }
+  // from a game in progress, Back goes home (the game is kept, with Resume)
+  let target = S.view === 'playing' ? 'home' : navStack.pop() || 'home';
+  if (S.view === 'playing') { navStack = []; toast('Your game is kept. Tap Resume to go back to it.'); }
+  go(target, true);
+});
+/** The app's own ‹ links that mean "back": the same as the phone's Back button. */
+function goBack() { if (navGuard) history.back(); else go('home'); }
+// settings switch between one-column (phone) and side-by-side (tablet) when the screen turns or resizes
+let wasWide = null;
+window.addEventListener('resize', () => {
+  const w = window.matchMedia('(min-width: 760px)').matches;
+  if (wasWide !== null && w !== wasWide && (S.view === 'settings' || S.view === 'setsec')) { if (w && S.view === 'setsec') S.view = 'settings'; rerenderKeep(); }
+  wasWide = w;
+});
+function go(view, fromBack) {
+  const prev = S.view;
   if (view !== 'recent') { S.sel = null; S.gameMenu = null; }
   G.lcResetUi();
   // leaving a saved game you opened but didn't change: nothing to resume
@@ -128,11 +180,14 @@ function go(view) {
   // an invite link opened the app: show it once you're signed in with a profile
   if (view === 'home' && S.profile && S.user && GR.pendingJoin()) return;
   S.view = view; S.picker = false; render(); window.scrollTo(0, 0);
+  if (fromBack === true) { if (!BASE_VIEWS[view]) { history.pushState({ smb: 1 }, ''); navGuard = true; } }
+  else navTrack(prev, view);
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted, privacy: HP.viewPrivacy, install: HP.viewInstall, setsec: viewSetSec, delacct: AC.viewDelAcct, changelog: CH.viewChangelog };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
+  document.body.dataset.view = S.view;
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
   if (S.view === 'stats') ST.afterStats();
@@ -152,7 +207,7 @@ function viewSignIn() {
   return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>Salt Mine Beta</h1><p class="byline">Track your Magic games, synced across your devices.</p>' +
     '<button class="btn primary big" style="max-width:340px;margin:22px auto 0" data-act="signin">Sign in with Google</button>' +
     (e ? '<p class="muted" style="margin-top:14px">Sign-in didn\u2019t finish: ' + esc(e.code || e.message || e) + '</p>' : '') +
-    '<p class="muted" style="margin-top:18px"><small>Your games are private to you unless you play them with friends in a playgroup.</small></p></div>';
+    '<p class="muted" style="margin-top:18px"><small>Your games are private to you unless you play them with friends in a playgroup. <button class="link" data-act="privacy">Privacy</button></small></p></div>';
 }
 function viewNoConn() {
   const e = S.profileError;
@@ -191,7 +246,7 @@ function viewHome() {
     '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
     '<button class="navbtn" data-act="groups">' + ICON.people + 'Playgroups<small class="muted">' + esc(GR.homeBlurb()) + '</small>' +
     (GR.waitingCount() ? '<span class="dot" aria-hidden="true"></span>' : '') + '</button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 5 of 6. Add playgroup-mates to your games and they get them to accept. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 6 of 6. Add playgroup-mates to your games and they get them to accept. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
@@ -278,15 +333,64 @@ function viewDeckForm() {
 }
 
 /* ---------- settings ---------- */
+/*
+ * Settings (Phase 6): a menu of sections. On a phone each section opens on its own screen; on a tablet (wide screen)
+ * the menu stays on the left and the section shows beside it.
+ */
+const SET_SECS = [
+  { id: 'profile', title: 'Profile', sub: 'Name, friend code, home screen stats', icon: 'user' },
+  { id: 'appearance', title: 'Appearance', sub: 'Light or dark, colors', icon: 'palette' },
+  { id: 'archidekt', title: 'Decks and Archidekt', sub: 'Username, folders, refresh', icon: 'layers' },
+  { id: 'games', title: 'During games', sub: 'Life counter, layouts, reminders', icon: 'heart' },
+  { id: 'formats', title: 'Formats', sub: 'What you can pick besides Commander', icon: 'grid' },
+  { id: 'data', title: 'Data', sub: 'Import from classic, commander list', icon: 'db' },
+  { id: 'whatsnew', title: 'What\u2019s new', sub: 'Version ' + APP_VERSION, icon: 'star' },
+  { id: 'about', title: 'About and account', short: 'Account', sub: 'Privacy, install, sign out, delete account', icon: 'info' }
+];
+const SICON = {
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-2s-1-1.6-1-2.6 1-1.4 2-1.4h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="15" cy="7" r="1.2"/>',
+  layers: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  db: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6"/>',
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'
+};
+const sIcon = k => '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (SICON[k] || '') + '</svg>';
+const wide = () => window.matchMedia('(min-width: 760px)').matches;
+const setRow = (act, id, icon, title, sub, on) => '<button class="setrow' + (on ? ' on' : '') + '" data-act="' + act + '"' + (id ? ' data-id="' + id + '"' : '') + (on ? ' aria-current="true"' : '') + '>' +
+  '<span class="ic">' + sIcon(icon) + '</span><span class="txt"><b>' + title + '</b><small>' + sub + '</small></span><span class="chev" aria-hidden="true">\u203a</span></button>';
+function setMenuHtml(active) {
+  const p = S.profile || {};
+  return '<nav class="setmenu" aria-label="Settings sections">' +
+    '<div class="setme">' + avatar(p, S.user) + '<span><b>' + esc(p.name || '') + '</b><small class="muted">Friend code ' + esc(p.code || '') + '</small></span></div>' +
+    SET_SECS.map(x => setRow('setsec', x.id, x.icon, x.title + (x.id === 'whatsnew' && S.newVersion ? ' <span class="pill">Update ready</span>' : ''), x.sub, x.id === active)).join('') +
+    '</nav>';
+}
+const secTitle = id => { const x = SET_SECS.find(y => y.id === id) || SET_SECS[0]; return x.short || x.title; };
 function viewSettings() {
+  const top = '<header class="top"><button class="link back" data-act="home">\u2039 Home</button><h3>Settings</h3><span style="width:60px"></span></header>';
+  if (!wide()) return top + setMenuHtml('');
+  const sec = S.setSec || 'profile';
+  return top + '<div class="setwide">' + setMenuHtml(sec) + '<section class="setpane"><h2 class="setttl">' + esc(secTitle(sec)) + '</h2>' + setSectionHtml(sec) + '</section></div>';
+}
+/** One section on its own screen (phones). On a wide screen it shows beside the menu instead. */
+function viewSetSec() {
+  if (wide()) return viewSettings();
+  const sec = S.setSec || 'profile';
+  return '<header class="top"><button class="link back" data-act="navback">\u2039 Settings</button><h3>' + esc(secTitle(sec)) + '</h3><span style="width:60px"></span></header>' + setSectionHtml(sec);
+}
+function setSectionHtml(sec) {
   const p = S.profile || {}, st = S.settings, sc = st.scheme || { kind: 'preset', id: 'salt' }, a = st.archidekt || {};
-  let h = '<header class="top"><button class="link back" data-act="home">\u2039 Home</button><h3>Settings</h3><span style="width:60px"></span></header>';
-  h += '<h2>You</h2><div class="panel"><div class="row" style="align-items:center">' + avatar(p, S.user) +
+  let h = '';
+  if (sec === 'profile') {
+  h += '<div class="panel"><div class="row" style="align-items:center">' + avatar(p, S.user) +
     '<div style="flex:1"><label for="pname" class="label">Display name</label><input id="pname" type="text" maxlength="40" value="' + esc(p.name || '') + '"></div></div>' +
     '<p style="margin:12px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b> <button class="link" data-act="copycode">Copy</button>' + (D.isOwner(S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div>';
   h += ST.settingsStatsHtml();
-
-  h += '<details class="collapse" id="appearsec"' + (S.open.appearsec ? ' open' : '') + '><summary><h2 style="display:inline">Appearance</h2></summary>';
+  } else if (sec === 'appearance') {
   h += '<div class="field"><span class="label">Light or dark</span>' + seg('theme', [{ val: 'system', label: 'Match device' }, { val: 'light', label: 'Light' }, { val: 'dark', label: 'Dark' }], st.theme || 'system') + '</div>';
   ['Classic', 'Guilds'].forEach(g => {
     h += '<span class="label">' + (g === 'Classic' ? 'Color schemes' : 'Guild pairs') + '</span><div class="swatches">' +
@@ -298,10 +402,9 @@ function viewSettings() {
     seg('custgrad', [{ val: 'solid', label: 'Solid' }, { val: 'grad', label: 'Gradient' }], sc.kind === 'custom' ? (sc.gradient ? 'grad' : 'solid') : '') +
     '<div class="row" style="margin-top:12px;align-items:center"><label class="colorpick">Color 1<input type="color" data-cust="c1" value="' + esc(cc.c1) + '"></label>' +
     (grad ? '<label class="colorpick">Color 2<input type="color" data-cust="c2" value="' + esc(cc.c2) + '"></label>' : '<span></span>') +
-    '<span class="swatchbig" style="background:' + schemeSwatch(cc.c1, grad ? cc.c2 : null) + '"></span></div></div></details>';
-
-  h += '<details class="collapse" id="archsec"' + (S.open.archsec ? ' open' : '') + '><summary><h2 style="display:inline">Archidekt</h2></summary>' +
-    '<div class="field"><label for="suser">Archidekt username</label><input id="suser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(a.username || '') + '"></div>' +
+    '<span class="swatchbig" style="background:' + schemeSwatch(cc.c1, grad ? cc.c2 : null) + '"></span></div></div>';
+  } else if (sec === 'archidekt') {
+  h +=     '<div class="field"><label for="suser">Archidekt username</label><input id="suser" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="' + esc(a.username || '') + '"></div>' +
     '<div class="field"><label for="sextra">Extra deck links (optional)</label><textarea id="sextra" rows="2" placeholder="Unlisted decks: paste their Archidekt links">' + esc((a.extraIds || []).map(id => 'https://archidekt.com/decks/' + id).join('\n')) + '</textarea></div>' +
     '<button class="btn" data-act="savearch">Save and refresh decks</button>' +
     '<button class="link" style="display:block;margin-top:10px" data-act="reloadall">Reload every deck</button>' +
@@ -323,21 +426,29 @@ function viewSettings() {
         '<label class="check"><input type="checkbox" data-fshow="' + esc(id) + '"' + (f.show ? ' checked' : '') + '> In the picker</label></div></div>';
     });
   }
-  h += '</details>';
 
-  h += G.settingsGameHtml();
-  h += '<h2>About</h2><div class="panel"><p style="margin:0">Salt Mine Beta, version ' + esc(APP_VERSION) + '</p>' +
-    (S.newVersion ? '<p style="margin:6px 0 0"><b>Version ' + esc(S.newVersion) + ' is ready.</b> <button class="link" data-act="doupdate">Update now</button></p>' : '') +
-    '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p>' +
-    '<button class="btn" style="margin-top:12px" data-act="signout">Sign out</button></div>' +
-    '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00A9Wizards of the Coast LLC.</small></p>';
+  } else if (sec === 'games' || sec === 'formats' || sec === 'data') {
+    h += G.settingsGameHtml(sec);
+  } else if (sec === 'whatsnew') {
+    h += CH.whatsNewHtml();
+  } else if (sec === 'about') {
+    h += '<div class="panel"><p style="margin:0">Salt Mine Beta, version ' + esc(APP_VERSION) + '</p>' +
+      (S.newVersion ? '<p style="margin:6px 0 0"><b>Version ' + esc(S.newVersion) + ' is ready.</b> <button class="link" data-act="doupdate">Update now</button></p>' : '') +
+      '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p></div>' +
+      '<div class="setlinks">' + setRow('privacy', '', 'info', 'Privacy', 'What\u2019s saved and who can see it') +
+      setRow('install', '', 'phone', 'Add it to a home screen', 'For iPhone, iPad and Android') + '</div>' +
+      '<button class="btn" style="margin-top:14px" data-act="signout">Sign out</button>' +
+      '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from Salt Mine Beta. This can\u2019t be undone.</p>' +
+      '<button class="btn danger" data-act="delacct">Delete my account</button>' +
+      '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00a9Wizards of the Coast LLC.</small></p>';
+  }
   return h;
 }
 
 /* ---------- actions ---------- */
 const uid = () => S.user && S.user.uid;
 Object.assign(G.H, {
-  go: go, render: render, rerenderKeep: () => { const y = window.scrollY; render(); window.scrollTo(0, y); }, setSettings: patch => setSettings(patch),
+  go: go, back: () => goBack(), render: render, rerenderKeep: () => { const y = window.scrollY; render(); window.scrollTo(0, y); }, setSettings: patch => setSettings(patch),
   pickerDecks: pickerDecks, deckType: d => deckInfo(d).type,
   newDeck: fromPicker => { S.form = { name: '', c1: '', c2: '', type: 'Scratch', bracket: '', fromPicker: !!fromPicker }; rerenderKeep(); }
 });
@@ -373,7 +484,7 @@ app.addEventListener('click', async e => {
   if (!el) return;
   if (el.dataset.seg) return onSeg(el.dataset.seg, el.dataset.val);
   const act = el.dataset.act;
-  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || SH.onSharedAct(act, el) || OW.onOwnerAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
+  if (ST.onStatsAct(act, el) || IM.onImportAct(act, el) || GR.onGroupsAct(act, el) || SH.onSharedAct(act, el) || OW.onOwnerAct(act, el) || HP.onHelpAct(act, el) || AC.onAccountAct(act, el) || G.onAct(act, el) || G.onSettingsAct(act, el)) return;
   switch (act) {
     case 'signin':
       S.signinError = null;
@@ -407,6 +518,9 @@ app.addEventListener('click', async e => {
     }
     case 'archsetup': return go('archsetup');
     case 'doupdate': return doUpdate();
+    case 'setsec': S.setSec = el.dataset.id; if (wide()) { rerenderKeep(); const pane = document.querySelector('.setpane'); if (pane) pane.scrollTop = 0; return; } return go('setsec');
+    case 'navback': return goBack();
+    case 'changelog': return go('changelog');
     case 'home': case 'decks': case 'settings': S.form = null; S.sheetDeck = null; return go(act);
     case 'refresh': return doRefresh();
     case 'reloadall': {

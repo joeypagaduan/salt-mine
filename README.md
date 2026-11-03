@@ -2,7 +2,7 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 5 done (5c). Everything through Phase 4, playgroups, shared games, and owner controls for the app's owner: a game's edit history with restore, locking, and bringing back deleted games. Plus an update banner for new versions. Phase 6 (beta polish) is next.
+**Status:** Phase 6b. Everything through Phase 5, plus the back button, privacy note, install help, a Settings menu (side by side on tablets), What's new, Delete my account, and bigger tap targets.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
 - Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html
@@ -18,6 +18,9 @@ The next version of The Salt Mine, a Magic: The Gathering game tracker and life 
 - `js/app.js` the app shell and the Phase 1 screens, `js/state.js` shared state
 - `js/gameui.js` game screens (setup, round counter, results, Recent games), `js/lifecounter.js` the life counter, `js/game.js` game logic (formats, drafts, records, share, rematch)
 - `js/stats.js` the Stats screen, the home stats card and the stats engines from classic 1.13
+- `js/changes.js` What's new and every version's changes (add each new version at the top)
+- `js/account.js` Delete my account
+- `js/help.js` the privacy note and install help
 - `js/owner.js` owner controls (history, restore, lock, deleted games)
 - `js/shared.js` shared games (inbox, accept and decline, deck tagging, linking names, "That wasn't me")
 - `js/groups.js` playgroups (list, members, invites, join requests), `js/vendor/qrcode.js` QR codes (qrcode-generator, MIT)

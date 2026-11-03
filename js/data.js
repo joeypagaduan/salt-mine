@@ -2,7 +2,8 @@
 // Firestore keeps a copy on the device, so all of this works offline and syncs when you're back online.
 import { firebaseConfig, OWNER_UID, OWNER_CODE } from './config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut as fbSignOut,
+  deleteUser, reauthenticateWithPopup }
   from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot,
   collection, writeBatch, serverTimestamp, deleteField, query, where, Timestamp, arrayUnion, arrayRemove }
@@ -386,4 +387,40 @@ export async function setLocked(uid, id, prev, locked) {
   b.set(doc(collection(db, 'games', id, 'history')), { savedAt: serverTimestamp(), savedBy: uid, why: locked ? 'lock' : 'unlock', data: prev });
   b.update(doc(db, 'games', id), { locked: !!locked, updatedAt: serverTimestamp() });
   await b.commit();
+}
+
+/* ---------- deleting your account (Phase 6) ---------- */
+async function deleteAll(paths) {
+  for (let i = 0; i < paths.length; i += 400) {
+    const b = writeBatch(db);
+    paths.slice(i, i + 400).forEach(p => b.delete(doc(db, ...p)));
+    await b.commit();
+  }
+}
+const idsIn = async path => (await getDocs(collection(db, ...path))).docs.map(d => d.id);
+/** A game only you played: its history first, then the game itself. */
+export async function eraseSoloGame(id) {
+  const hist = await idsIn(['games', id, 'history']);
+  await deleteAll(hist.map(h => ['games', id, 'history', h]).concat([['games', id]]));
+}
+/** Everything under users/{uid} (settings, game in progress, decks, events, join requests), then your profile and friend code. */
+export async function eraseUserData(uid, code) {
+  const paths = [['users', uid, 'meta', 'settings'], ['users', uid, 'meta', 'draft']];
+  for (const sub of ['decks', 'events', 'joins']) (await idsIn(['users', uid, sub])).forEach(id => paths.push(['users', uid, sub, id]));
+  paths.push(['users', uid]);
+  await deleteAll(paths);
+  const b = writeBatch(db);
+  b.delete(doc(db, 'profiles', uid));
+  if (code) b.delete(doc(db, 'codes', code));
+  await b.commit();
+}
+/** Removes the Google sign-in from the app. Google may ask you to sign in once more first. */
+export async function deleteSignIn() {
+  const u = auth.currentUser;
+  if (!u) return;
+  try { await deleteUser(u); }
+  catch (e) {
+    if (e && e.code === 'auth/requires-recent-login') { await reauthenticateWithPopup(u, provider); await deleteUser(u); }
+    else throw e;
+  }
 }

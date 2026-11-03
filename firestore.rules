@@ -23,7 +23,9 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && code.matches('^[a-z][a-z0-9]{1,15}-[0-9]{3,4}$')
         && (code != 'joey-220' || isAppOwner());
-      allow update, delete: if false;
+      allow update: if false;
+      // deleting your account frees your friend code (the app owner's stays reserved)
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid && code != 'joey-220';
     }
 
     // Public profile: just your display name, friend code and photo, so friends can find you.
@@ -37,7 +39,7 @@ service cloud.firestore {
         && request.resource.data.code == resource.data.code
         && request.resource.data.keys().hasOnly(['name', 'code', 'photo', 'createdAt'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40;
-      allow delete: if false;
+      allow delete: if me(uid) && !isAppOwner();
     }
 
     // Games: one record per game. Only the accounts in its players list can see it. A game someone else logged only
@@ -91,15 +93,18 @@ service cloud.firestore {
           || changed().hasOnly(['accepted', 'declined', 'updatedAt', 'updatedBy'])
           || leaving())
         && (request.resource.data.players == resource.data.players || isAppOwner() || leaving() || linking());
-      // Games are never erased: "Delete" hides them, so they can be restored.
-      allow delete: if false;
+      // Games are never erased by "Delete" (it hides them, so they can be restored). The one exception: deleting your
+      // account erases the games only you played.
+      allow delete: if signedIn() && resource.data.createdBy == request.auth.uid && resource.data.players == [request.auth.uid];
 
       // Every edit keeps the version before it. Players add to the history; only the app's owner can read it.
       match /history/{historyId} {
         allow read: if isAppOwner() && request.auth.uid in gameDoc(gameId).players;
+        // erasing a game only you played (when deleting your account) takes its history with it
+        allow list, delete: if signedIn() && gameDoc(gameId).createdBy == request.auth.uid && gameDoc(gameId).players == [request.auth.uid];
         allow create: if signedIn() && request.auth.uid in gameDoc(gameId).players
           && request.resource.data.savedBy == request.auth.uid;
-        allow update, delete: if false;
+        allow update: if false;
       }
     }
 

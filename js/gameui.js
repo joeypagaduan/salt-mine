@@ -856,9 +856,11 @@ document.addEventListener('click', e => {
 app.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('[data-press="game"]')) e.preventDefault(); });
 
 /* ---------- Settings: formats and the commander list ---------- */
-export function settingsGameHtml() {
+/** A Settings section: 'games' (during games), 'formats' or 'data'. */
+export function settingsGameHtml(sec) {
   const st = S.settings;
-  let h = '<details class="collapse" id="lcsec"' + (S.open.lcsec ? ' open' : '') + '><summary><h2 style="display:inline">During games</h2></summary>';
+  let h = '';
+  if (sec === 'games') {
   h += '<div class="field"><span class="label">Start a game opens</span>' + seg('gamemode', [{ val: 'life', label: 'Life counter' }, { val: 'simple', label: 'Round counter only' }], st.gameMode || 'life') + '</div>';
   h += '<div class="field"><span class="label">Turn reminders</span>' + seg('reminders', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.reminders === false ? 'off' : 'on') +
     '<p class="muted" style="margin-top:6px"><small>Shows \u201Cdraw a card\u201D when the monarch passes the turn, \u201Cventure into the Undercity\u201D for the player with the initiative, and a rad counter reminder two seconds into the turn of anyone with rads.</small></p></div>';
@@ -874,8 +876,10 @@ export function settingsGameHtml() {
   ELIM_CATS.forEach(c => {
     h += '<div class="field"><label for="el-' + c[0] + '">' + c[1] + '</label><textarea id="el-' + c[0] + '" data-elim="' + c[0] + '" rows="' + Math.max(3, elimLines(c[0]).length + 1) + '" autocomplete="off" spellcheck="false">' + esc(elimLines(c[0]).join('\n')) + '</textarea></div>';
   });
-  h += '<button class="link" data-act="elimreset">Reset to the original lines</button></details>';
-  h += '<details class="collapse" id="fmtsec"' + (S.open.fmtsec ? ' open' : '') + '><summary><h2 style="display:inline">Formats</h2></summary>' +
+  h += '<button class="link" data-act="elimreset">Reset to the original lines</button>';
+  }
+  if (sec === 'formats') {
+  h +=
     '<p class="muted">The formats you can pick when starting a game, besides Commander. \u201CUses a set\u201D asks for the set (for Limited). \u201CEvent\u201D groups matches into an event, like a prerelease.</p>';
   formatList().forEach((f, i) => {
     h += '<div class="panel fmtrow"><div class="row" style="align-items:end"><div class="field" style="flex:2"><label for="fn' + i + '">Name</label><input type="text" id="fn' + i + '" data-fmt="' + i + '|name" value="' + esc(f.name) + '" autocomplete="off"></div>' +
@@ -886,13 +890,16 @@ export function settingsGameHtml() {
       '<label><input type="checkbox" data-fmtc="' + i + '|show"' + (f.show !== false ? ' checked' : '') + '> Show in New game</label>' +
       '<button class="link danger" data-act="fmtdel" data-i="' + i + '">Remove</button></div></div>';
   });
-  h += '<button class="btn" data-act="fmtadd">+ Add a format</button><button class="link" style="display:block;margin-top:10px" data-act="fmtreset">Reset to the original list</button></details>';
+  h += '<button class="btn" data-act="fmtadd">+ Add a format</button><button class="link" style="display:block;margin-top:10px" data-act="fmtreset">Reset to the original list</button>';
+  }
+  if (sec === 'data') {
   const n = liveGames().length;
-  h += '<details class="collapse" id="datasec"' + (S.open.datasec ? ' open' : '') + '><summary><h2 style="display:inline">Data</h2></summary>' + settingsImportHtml() + settingsOwnerHtml() +
+  h += settingsImportHtml() + settingsOwnerHtml() +
     '<div class="panel"><p style="margin:0">Update the commander list after a new set comes out. It also updates on its own every two weeks.</p>' +
     '<button class="btn" style="margin-top:10px" data-act="refreshcmds"' + (CMD.loading ? ' disabled' : '') + '>' + (CMD.loading ? 'Downloading\u2026' : 'Refresh commander list') + '</button></div>' +
     '<p class="muted"><small>' + CMD.list.length + ' commanders on this device' + (CMD.at ? ' (updated ' + new Date(CMD.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ')' : '') +
-    ', ' + n + (n === 1 ? ' game' : ' games') + ' logged.</small></p></details>';
+    ', ' + n + (n === 1 ? ' game' : ' games') + ' logged.</small></p>';
+  }
   return h;
 }
 export function onSettingsAct(act, el) {

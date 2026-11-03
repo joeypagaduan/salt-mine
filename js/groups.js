@@ -212,7 +212,8 @@ export function viewJoin() {
   if (asked && !G5.declined[inv.gid]) return h + '<p>You asked to join. ' + esc(inv.byName || 'The organizer') + ' will approve you.</p><button class="btn" data-act="groups">See your playgroups</button>';
   if (!inv.on) return h + '<p>Invites to this playgroup are turned off right now. Ask ' + esc(inv.byName || 'the organizer') + ' to turn them on.</p>';
   return h + '<p>Joining shares your display name, friend code and photo with the members. ' + esc(inv.byName || 'The organizer') + ' approves you first.</p>' +
-    '<button class="btn primary" data-act="gask">Ask to join</button><button class="btn" style="margin-top:8px" data-act="groups">Not now</button>';
+    '<button class="btn primary" data-act="gask">Ask to join</button><button class="btn" style="margin-top:8px" data-act="groups">Not now</button>' +
+    '<p class="muted" style="margin-top:12px"><small>New to Salt Mine Beta? <button class="link" data-act="install" data-back="join" data-back-label="Invite">Add it to your home screen</button> so it opens like an app.</small></p>';
 }
 
 /* ---------- taps ---------- */
