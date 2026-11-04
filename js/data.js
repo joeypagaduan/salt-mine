@@ -389,6 +389,10 @@ export async function setLocked(uid, id, prev, locked) {
   await b.commit();
 }
 
+/** When you last opened the app and which version (for the owner's dashboard). Merged, so nothing else on users/{uid} changes. */
+export function touchSeen(uid, version) {
+  return setDoc(doc(db, 'users', uid), { lastSeen: serverTimestamp(), appVersion: version }, { merge: true });
+}
 /* ---------- deleting your account (Phase 6) ---------- */
 async function deleteAll(paths) {
   for (let i = 0; i < paths.length; i += 400) {

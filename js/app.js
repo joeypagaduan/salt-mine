@@ -55,9 +55,17 @@ D.watchAuth(async (user, err) => {
       if (S.view === 'home' || S.view === 'settings') rerenderKeep();
     }).catch(() => {});
   } else if (!(await firstProfile(user))) return;
+  seenToday(user.uid);
   // the commander list for typing in opponents' commanders: downloads the first time, then every two weeks
   setTimeout(() => ensureCommanders(false).catch(() => {}), 1500);
 });
+/** Notes when you last opened the app, at most once a day per device. Only once you have a profile. */
+function seenToday(u) {
+  if (!S.profile) return;
+  const d = new Date(), day = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(), k = 'smb_seen_' + u;
+  try { if (localStorage.getItem(k) === day) return; localStorage.setItem(k, day); } catch (e) {}
+  D.touchSeen(u, APP_VERSION).catch(() => { try { localStorage.removeItem(k); } catch (e) {} });
+}
 function splashWait() { return new Promise(r => setTimeout(r, Math.max(0, SPLASH_UNTIL - Date.now()))); }
 /** First launch on this device: the profile has to come from the account. Returns false when it couldn't. */
 async function firstProfile(user) {
@@ -185,7 +193,7 @@ function go(view, fromBack) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted, privacy: HP.viewPrivacy, install: HP.viewInstall, setsec: viewSetSec, delacct: AC.viewDelAcct, changelog: CH.viewChangelog };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted, privacy: HP.viewPrivacy, install: HP.viewInstall, support: HP.viewSupport, setsec: viewSetSec, delacct: AC.viewDelAcct, changelog: CH.viewChangelog };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   document.body.dataset.view = S.view;
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
@@ -356,6 +364,7 @@ const SICON = {
   db: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6"/>',
+  coffee: '<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M17 11h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M8 3v3M12 3v3"/>',
   phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'
 };
 const sIcon = k => '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (SICON[k] || '') + '</svg>';
@@ -436,7 +445,8 @@ function setSectionHtml(sec) {
       (S.newVersion ? '<p style="margin:6px 0 0"><b>Version ' + esc(S.newVersion) + ' is ready.</b> <button class="link" data-act="doupdate">Update now</button></p>' : '') +
       '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p></div>' +
       '<div class="setlinks">' + setRow('privacy', '', 'info', 'Privacy', 'What\u2019s saved and who can see it') +
-      setRow('install', '', 'phone', 'Add it to a home screen', 'For iPhone, iPad and Android') + '</div>' +
+      setRow('install', '', 'phone', 'Add it to a home screen', 'For iPhone, iPad and Android') +
+      setRow('support', '', 'coffee', 'Support the app', 'Optional tips, nothing locked') + '</div>' +
       '<button class="btn" style="margin-top:14px" data-act="signout">Sign out</button>' +
       '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from Salt Mine Beta. This can\u2019t be undone.</p>' +
       '<button class="btn danger" data-act="delacct">Delete my account</button>' +
@@ -521,6 +531,7 @@ app.addEventListener('click', async e => {
     case 'setsec': S.setSec = el.dataset.id; if (wide()) { rerenderKeep(); const pane = document.querySelector('.setpane'); if (pane) pane.scrollTop = 0; return; } return go('setsec');
     case 'navback': return goBack();
     case 'changelog': return go('changelog');
+    case 'support': return HP.openSupport();
     case 'home': case 'decks': case 'settings': S.form = null; S.sheetDeck = null; return go(act);
     case 'refresh': return doRefresh();
     case 'reloadall': {

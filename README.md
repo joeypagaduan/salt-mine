@@ -2,7 +2,7 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 6b. Everything through Phase 5, plus the back button, privacy note, install help, a Settings menu (side by side on tablets), What's new, Delete my account, and bigger tap targets.
+**Status:** Phase 6d. Everything through Phase 5, plus the back button, privacy note, install help, a Settings menu (side by side on tablets), What's new, Delete my account, and bigger tap targets.
 
 - Live: https://joeypagaduan.github.io/salt-mine-next/
 - Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html

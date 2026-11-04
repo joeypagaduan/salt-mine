@@ -4,6 +4,11 @@ import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
 
 export const VERSIONS = [
+  { v: '2.0.0-alpha.16', title: 'Support the app', items: [
+    ['Added', 'Support the app, in Settings > About and account: optional tips through PayPal. Everything stays free.']] },
+  { v: '2.0.0-alpha.15', title: 'Privacy note', items: [
+    ['Changed', 'The privacy note says the app\u2019s owner can see account emails and game records, to run and support the app.'],
+    ['Added', 'The app notes when you last opened it and which version you have (once a day).']] },
   { v: '2.0.0-alpha.14', title: 'Settings, account', items: [
     ['Added', 'Settings is now a menu of sections. On a tablet, the menu stays on the left with the section beside it.'],
     ['Added', 'Delete my account, in Settings > About and account.'],
@@ -62,7 +67,8 @@ const itemsHtml = items => '<ul class="changes">' + items.map(x => '<li><span cl
 export function whatsNewHtml() {
   const cur = VERSIONS.find(x => x.v === APP_VERSION) || VERSIONS[0];
   return '<div class="panel"><p style="margin:0"><b>Version ' + esc(cur.v) + '</b> <span class="muted">' + esc(cur.title) + '</span></p>' + itemsHtml(cur.items) + '</div>' +
-    '<button class="btn" data-act="changelog">Earlier versions</button>';
+    '<button class="btn" data-act="changelog">Earlier versions</button>' +
+    '<p class="muted supline">Enjoying the updates? <button class="link" data-act="support">Support the app</button></p>';
 }
 export function viewChangelog() {
   let h = '<header class="top"><button class="link back" data-act="navback">\u2039 Back</button><h3>All versions</h3><span style="width:60px"></span></header>';

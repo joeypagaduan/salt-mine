@@ -146,3 +146,13 @@ ul.dellist { padding-left: 20px; line-height: 1.5; } ul.dellist li { margin-bott
   body[data-view=settings] #app, body[data-view=setsec] #app { max-width: 1000px; padding-left: 28px; padding-right: 28px; }
 }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
+/* Support the app */
+.support { text-align: center; padding-top: 8px; }
+.support p { text-align: left; line-height: 1.55; margin: 0 0 14px; }
+.support p.muted { margin-top: 10px; }
+.support p.muted { text-align: center; }
+.support h2 { margin: 12px 0 10px; }
+.supic { display: inline-flex; width: 60px; height: 60px; border-radius: 18px; align-items: center; justify-content: center; background: var(--surface2); color: var(--accent); }
+.supic svg { width: 32px; height: 32px; }
+.support a.btn { display: flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 16px; }
+.supline { margin-top: 18px; text-align: center; }

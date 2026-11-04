@@ -1,6 +1,6 @@
 // Salt Mine Beta settings. None of this is secret: the Firebase config only identifies the project,
 // and the database rules decide who can read what.
-export const APP_VERSION = '2.0.0-alpha.14';
+export const APP_VERSION = '2.0.0-alpha.16';
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyCIbwINcmHqM8cPdj_jpdQ9HzZFCL312S8',
@@ -12,6 +12,9 @@ export const firebaseConfig = {
 };
 
 // The Archidekt relay's web app URL (ends in /exec). KEEP the value from Phase 0.
+// Support the app: the tip link (Settings > About and account > Support the app)
+export const SUPPORT_URL = 'https://paypal.me/whathappened220';
+
 export const RELAY_URL = 'https://script.google.com/macros/s/AKfycbwxX5YIHO9eDKRHAREeiP8GLAT8h7UughUNr-8m7coGKsLtOi5unpkJSAqWGS54Sy1pqg/exec';
 
 // The app's owner: master controls, and the reserved friend code
