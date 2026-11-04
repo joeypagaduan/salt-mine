@@ -1,4 +1,4 @@
-// Salt Mine Beta, Phase 0 setup check
+// The Salt Mine, Phase 0 setup check
 import { APP_VERSION, firebaseConfig, RELAY_URL } from './config.js';
 const ARCHIDEKT_USERNAME = 'what_happened_atthe_salt_mine';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';

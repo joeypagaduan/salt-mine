@@ -1,4 +1,4 @@
-// Salt Mine Beta: the app shell and the Phase 1 screens (sign-in, profile, settings, decks).
+// The Salt Mine (2.0, the Firebase rebuild): the app shell and the Phase 1 screens (sign-in, profile, settings, decks).
 // Game screens live in gameui.js, game logic in game.js.
 import { APP_VERSION } from './config.js';
 import { esc, store, toast, seg, manaGradient, normalizeColors, PRESETS, themeColors, applyTheme, schemeSwatch } from './util.js';
@@ -208,11 +208,11 @@ function rerenderKeep() {
 
 /* ---------- screens ---------- */
 function viewLoading() {
-  return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>Salt Mine Beta</h1><p class="byline">by Joey Pagaduan</p><p class="byline ver">Version ' + esc(APP_VERSION) + '</p></div>';
+  return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>The Salt Mine</h1><p class="byline">by Joey Pagaduan</p><p class="byline ver">Version ' + esc(APP_VERSION) + '</p></div>';
 }
 function viewSignIn() {
   const e = S.signinError;
-  return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>Salt Mine Beta</h1><p class="byline">Track your Magic games, synced across your devices.</p>' +
+  return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>The Salt Mine</h1><p class="byline">Track your Magic games, synced across your devices.</p>' +
     '<button class="btn primary big" style="max-width:340px;margin:22px auto 0" data-act="signin">Sign in with Google</button>' +
     (e ? '<p class="muted" style="margin-top:14px">Sign-in didn\u2019t finish: ' + esc(e.code || e.message || e) + '</p>' : '') +
     '<p class="muted" style="margin-top:18px"><small>Your games are private to you unless you play them with friends in a playgroup. <button class="link" data-act="privacy">Privacy</button></small></p></div>';
@@ -220,7 +220,7 @@ function viewSignIn() {
 function viewNoConn() {
   const e = S.profileError;
   return '<div class="loading splash"><img class="logo-big" src="' + LOGO + '" alt=""><h1>Can\u2019t reach your account</h1>' +
-    '<p class="byline">This is the first time Salt Mine Beta has opened on this device, so it needs a connection once to load your profile. After that it works offline.</p>' +
+    '<p class="byline">This is the first time The Salt Mine has opened on this device, so it needs a connection once to load your profile. After that it works offline.</p>' +
     '<button class="btn primary big" style="max-width:340px;margin:22px auto 0" data-act="retryprofile"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Trying\u2026' : 'Try again') + '</button>' +
     (e ? '<p class="muted" style="margin-top:14px"><small>' + esc(e.code || e.message || e) + '</small></p>' : '') + '</div>';
 }
@@ -441,14 +441,14 @@ function setSectionHtml(sec) {
   } else if (sec === 'whatsnew') {
     h += CH.whatsNewHtml();
   } else if (sec === 'about') {
-    h += '<div class="panel"><p style="margin:0">Salt Mine Beta, version ' + esc(APP_VERSION) + '</p>' +
+    h += '<div class="panel"><p style="margin:0">The Salt Mine, version ' + esc(APP_VERSION) + '</p>' +
       (S.newVersion ? '<p style="margin:6px 0 0"><b>Version ' + esc(S.newVersion) + ' is ready.</b> <button class="link" data-act="doupdate">Update now</button></p>' : '') +
       '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p></div>' +
       '<div class="setlinks">' + setRow('privacy', '', 'info', 'Privacy', 'What\u2019s saved and who can see it') +
       setRow('install', '', 'phone', 'Add it to a home screen', 'For iPhone, iPad and Android') +
       setRow('support', '', 'coffee', 'Support the app', 'Optional tips, nothing locked') + '</div>' +
       '<button class="btn" style="margin-top:14px" data-act="signout">Sign out</button>' +
-      '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from Salt Mine Beta. This can\u2019t be undone.</p>' +
+      '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from The Salt Mine. This can\u2019t be undone.</p>' +
       '<button class="btn danger" data-act="delacct">Delete my account</button>' +
       '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00a9Wizards of the Coast LLC.</small></p>';
   }
@@ -501,7 +501,7 @@ app.addEventListener('click', async e => {
       try { await D.signIn(); } catch (err) { S.signinError = err; render(); }
       return;
     case 'signout':
-      if (confirm('Sign out of Salt Mine Beta on this device?')) { D.flushSettings(uid()); G.clearGamesCache(); await D.signOut(); store('smb_settings', null); }
+      if (confirm('Sign out of The Salt Mine on this device?')) { D.flushSettings(uid()); G.clearGamesCache(); await D.signOut(); store('smb_settings', null); }
       return;
     case 'retryprofile': {
       S.busy = 'trying'; render();

@@ -9,7 +9,7 @@ const backTo = () => ['navback', 'Back'];
 export function viewPrivacy() {
   const b = backTo();
   return top(b[0], b[1], 'Privacy') + '<div class="prose">' +
-    '<p>Salt Mine Beta is a free, unofficial app for tracking Magic: The Gathering games, run by Joey Pagaduan for friends and playgroups. There are no ads, nothing is sold, and the app doesn\u2019t track how you use it.</p>' +
+    '<p>The Salt Mine is a free, unofficial app for tracking Magic: The Gathering games, run by Joey Pagaduan for friends and playgroups. There are no ads, nothing is sold, and the app doesn\u2019t track how you use it.</p>' +
     '<h2>What\u2019s saved</h2><p>Signing in with Google gives the app your name, email address and profile photo. Your profile keeps the display name you choose, your friend code and your photo. The app also saves your games, decks, settings and playgroups so they sync across your devices. It also notes when you last opened the app and which version you have. Everything is stored with Google\u2019s Firebase.</p>' +
     '<h2>Who can see it</h2><ul>' +
     '<li><b>Anyone signed in</b> can see a profile\u2019s display name, friend code and photo. Your email address isn\u2019t shown to other players.</li>' +
@@ -28,9 +28,9 @@ export function viewInstall() {
   const android = /Android/.test(navigator.userAgent);
   const iosBlock = '<h2>iPhone or iPad</h2><ol class="steps"><li>Open the link in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (the square with an arrow).</li><li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>';
   const androidBlock = '<h2>Android</h2><ol class="steps"><li>Open the link in <b>Chrome</b>.</li><li>Tap <b>\u22ee</b> (top right), then <b>Install app</b> or <b>Add to Home screen</b>.</li><li>In Samsung Internet instead: tap <b>\u2261</b>, then <b>Add page to</b> > <b>Home screen</b>.</li></ol>' +
-    '<p class="muted"><small>It shows up as <b>Salt Mine \u03b2</b>. If your phone says it\u2019s already installed but you can\u2019t find it, search your apps for \u201CSalt Mine.\u201D</small></p>';
+    '<p class="muted"><small>It shows up as <b>The Salt Mine</b>. If your phone says it\u2019s already installed but you can\u2019t find it, search your apps for \u201CSalt Mine.\u201D</small></p>';
   return top(b[0], b[1], 'Install') + '<div class="prose">' +
-    '<p>Salt Mine Beta works best from your home screen: it opens full screen like an app, and works without a connection at the table.</p>' +
+    '<p>The Salt Mine works best from your home screen: it opens full screen like an app, and works without a connection at the table.</p>' +
     (android && !ios ? androidBlock + iosBlock : iosBlock + androidBlock) +
     '<h2>Then</h2><p>Open it from the new icon and sign in with Google. If a friend sent you a playgroup invite, open their link once more after signing in.</p></div>';
 }

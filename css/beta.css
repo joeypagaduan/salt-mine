@@ -1,4 +1,4 @@
-/* Additions for Salt Mine Beta, on top of the classic styles in app.css */
+/* Additions for The Salt Mine 2.0, on top of the classic styles in app.css */
 .brand .beta { font-size: .55em; vertical-align: middle; padding: 2px 8px; border-radius: 999px; background: var(--accent-bg, var(--accent)); color: var(--accent-ink); font-family: system-ui, sans-serif; font-weight: 700; letter-spacing: .02em; }
 .hello { display: flex; align-items: center; gap: 14px; }
 .avatar { flex: none; width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 24px; }

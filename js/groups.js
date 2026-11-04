@@ -213,7 +213,7 @@ export function viewJoin() {
   if (!inv.on) return h + '<p>Invites to this playgroup are turned off right now. Ask ' + esc(inv.byName || 'the organizer') + ' to turn them on.</p>';
   return h + '<p>Joining shares your display name, friend code and photo with the members. ' + esc(inv.byName || 'The organizer') + ' approves you first.</p>' +
     '<button class="btn primary" data-act="gask">Ask to join</button><button class="btn" style="margin-top:8px" data-act="groups">Not now</button>' +
-    '<p class="muted" style="margin-top:12px"><small>New to Salt Mine Beta? <button class="link" data-act="install" data-back="join" data-back-label="Invite">Add it to your home screen</button> so it opens like an app.</small></p>';
+    '<p class="muted" style="margin-top:12px"><small>New to The Salt Mine? <button class="link" data-act="install" data-back="join" data-back-label="Invite">Add it to your home screen</button> so it opens like an app.</small></p>';
 }
 
 /* ---------- taps ---------- */
@@ -296,7 +296,7 @@ async function doAct(act, el) {
       return true;
     case 'gshare': case 'gcopy': {
       if (!g) return true;
-      const link = inviteLink(g.invite), text = 'Join my playgroup "' + g.name + '" on Salt Mine Beta: ' + link;
+      const link = inviteLink(g.invite), text = 'Join my playgroup "' + g.name + '" on The Salt Mine: ' + link;
       if (act === 'gshare' && navigator.share) { navigator.share({ title: g.name, text: text }).catch(() => {}); return true; }
       try { await navigator.clipboard.writeText(link); toast('Link copied'); } catch (e) { window.prompt('Invite link:', link); }
       return true;

@@ -65,7 +65,7 @@ export function fingerprint(rec) {
 const GAME_SKIP = { Status: 1, Created: 1, Updated: 1 };
 const rowText = r => Object.keys(r).filter(k => k !== 'rowNum' && !GAME_SKIP[k]).sort().map(k => k + '=' + norm(r[k])).join('\u0001');
 
-/** Turns a downloaded classic Sheet into games, events and typed-in decks in Salt Mine Beta's shape. */
+/** Turns a downloaded classic Sheet into games, events and typed-in decks in the new app's shape. */
 export function parseClassic(book) {
   const gkey = Object.keys(book).find(k => k.trim().toLowerCase() === 'games');
   if (!gkey || !(book[gkey][0] || []).map(str).includes('Game ID')) throw new Error('not-salt-mine');
@@ -333,7 +333,7 @@ export function viewImport() {
   h += listBlock('impadd', 'See the new games', p.add, line);
   h += listBlock('impupd', 'See the games that will update', p.update, line);
   if (p.dupes.length) {
-    h += '<h2>Maybe already here</h2><p class="muted" style="margin-top:0"><small>These look like games you also logged in Salt Mine Beta: same day, deck and finish. They\u2019re skipped unless you tick them.</small></p>';
+    h += '<h2>Maybe already here</h2><p class="muted" style="margin-top:0"><small>These look like games you also logged here: same day, deck and finish. They\u2019re skipped unless you tick them.</small></p>';
     p.dupes.forEach(c => {
       const r = c.rec, me = r.seats[0], g = c.match;
       h += '<label class="panel dupe"><input type="checkbox" data-impdup="' + esc(c.id) + '"' + (IMP.include[c.id] ? ' checked' : '') + '>' +

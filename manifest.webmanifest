@@ -1,7 +1,7 @@
 {
-  "name": "Salt Mine Beta",
-  "short_name": "Salt Mine β",
-  "description": "Magic: The Gathering game tracker and life counter (beta).",
+  "name": "The Salt Mine",
+  "short_name": "The Salt Mine",
+  "description": "Magic: The Gathering game tracker and life counter.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

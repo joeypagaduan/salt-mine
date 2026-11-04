@@ -4,6 +4,9 @@ import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
 
 export const VERSIONS = [
+  { v: '2.0.0', title: 'The Salt Mine', items: [
+    ['Changed', 'The app is now called The Salt Mine, and it lives at a new, shorter address. Old links and home-screen icons forward to it.'],
+    ['Changed', 'Out of beta: version 2.0.0.']] },
   { v: '2.0.0-alpha.16', title: 'Support the app', items: [
     ['Added', 'Support the app, in Settings > About and account: optional tips through PayPal. Everything stays free.']] },
   { v: '2.0.0-alpha.15', title: 'Privacy note', items: [

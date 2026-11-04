@@ -2,10 +2,10 @@
 
 The next version of The Salt Mine, a Magic: The Gathering game tracker and life counter, rebuilt as a standalone web app with games that sync across devices.
 
-**Status:** Phase 6d. Everything through Phase 5, plus the back button, privacy note, install help, a Settings menu (side by side on tablets), What's new, Delete my account, and bigger tap targets.
+**Status:** 2.0.0. The Salt Mine (formerly Salt Mine Beta), at https://joeypagaduan.github.io/salt-mine/
 
-- Live: https://joeypagaduan.github.io/salt-mine-next/
-- Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine-next/check.html
+- Live: https://joeypagaduan.github.io/salt-mine/
+- Setup check (troubleshooting): https://joeypagaduan.github.io/salt-mine/check.html
 - Games: one record per game in the `games` collection, readable only by the accounts listed in it. Each edit keeps the previous version in the game's history, and Delete hides a game rather than erasing it.
 - Sign-in and data: Firebase (Authentication and Firestore, with an offline copy on each device). The config in `js/config.js` isn't secret; the database rules in `firestore.rules` decide who can read what, and must be pasted into the Firebase console whenever they change.
 - Archidekt decks: through a small Apps Script relay (code lives outside this repo).

@@ -1,6 +1,6 @@
-// Keeps Salt Mine Beta's own files on the device so it opens without a connection.
+// Keeps The Salt Mine's own files on the device so it opens without a connection.
 // Your data is handled separately by Firebase's offline copy.
-const CACHE = 'smb-2.0.0-alpha.16';
+const CACHE = 'smb-2.0.0';
 const SHELL = ['./', 'index.html', 'css/app.css', 'css/beta.css', 'js/app.js', 'js/util.js', 'js/data.js', 'js/archidekt.js', 'js/config.js',
   'js/state.js', 'js/game.js', 'js/gameui.js', 'js/commanders.js', 'js/lifecounter.js', 'js/stats.js', 'js/importer.js', 'js/xlsx.js', 'js/groups.js', 'js/vendor/qrcode.js', 'js/shared.js', 'js/owner.js', 'js/help.js', 'js/changes.js', 'js/account.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon.png', 'icons/apple-touch-icon.png'];
