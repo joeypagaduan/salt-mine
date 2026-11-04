@@ -4,6 +4,8 @@ import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
 
 export const VERSIONS = [
+  { v: '2.0.1', title: 'No more Beta badge', items: [
+    ['Removed', 'The Beta badge on the home screen header and the app icon.']] },
   { v: '2.0.0', title: 'The Salt Mine', items: [
     ['Changed', 'The app is now called The Salt Mine, and it lives at a new, shorter address. Old links and home-screen icons forward to it.'],
     ['Changed', 'Out of beta: version 2.0.0.']] },

@@ -244,7 +244,7 @@ function viewArchSetup() {
 }
 function viewHome() {
   const p = S.profile || {}, live = pickerDecks();
-  let h = '<header class="top"><span class="brand"><img src="' + LOGO + '" alt=""><h1>Salt Mine <span class="beta">Beta</span></h1></span><button class="icon gear" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>';
+  let h = '<header class="top"><span class="brand"><img src="' + LOGO + '" alt=""><h1>The Salt Mine</h1></span><button class="icon gear" data-act="settings" aria-label="Settings">' + ICON.gear + '</button></header>';
   h += '<section class="homecard hello">' + avatar(p, S.user) + '<div><b class="cond" style="font-size:24px">Hi, ' + esc(p.name || 'there') + '</b>' +
     '<p class="muted" style="margin:2px 0 0">Friend code <b class="code sm">' + esc(p.code || '') + '</b>' + (D.isOwner(S.user && S.user.uid) ? ' <span class="pill">Owner</span>' : '') + '</p></div></section>';
   h += updateHtml() + G.homeGameHtml() + SH.homeInboxHtml();
@@ -254,7 +254,7 @@ function viewHome() {
     '<button class="navbtn" data-act="stats">' + ICON.stats + 'Stats<small class="muted">' + esc(ST.statsBlurb()) + '</small></button>' +
     '<button class="navbtn" data-act="groups">' + ICON.people + 'Playgroups<small class="muted">' + esc(GR.homeBlurb()) + '</small>' +
     (GR.waitingCount() ? '<span class="dot" aria-hidden="true"></span>' : '') + '</button></div>';
-  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Beta, part 6 of 6. Add playgroup-mates to your games and they get them to accept. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
+  h += '<p class="muted" style="margin-top:14px;text-align:center"><small>Add playgroup-mates to your games and they get them to accept. Bring classic games over in Settings > Data. Your classic Salt Mine keeps working as usual.</small></p>';
   if (!navigator.onLine) h += '<p class="muted" style="margin-top:6px;text-align:center"><small>Offline. Changes save on this device and sync when you\u2019re back online.</small></p>';
   return h;
 }
