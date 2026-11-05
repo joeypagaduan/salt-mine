@@ -4,6 +4,7 @@ import { APP_VERSION } from './config.js';
 import { esc, store, toast, seg, manaGradient, normalizeColors, PRESETS, themeColors, applyTheme, schemeSwatch } from './util.js';
 import * as D from './data.js';
 import { keepAwake } from './wake.js';
+import * as RZ from './rulezero.js';
 import { refreshDecks, parseDeckIds } from './archidekt.js';
 import { S } from './state.js';
 import { fromRecord, sortGames, withRecords } from './game.js';
@@ -91,9 +92,11 @@ function startWatching(user) {
     S.settings = Object.assign({}, s, D.pendingSettings()); store('smb_settings', S.settings); applyTheme(S.settings);
     if (S.view === 'settings' || S.view === 'decks' || S.view === 'stats') rerenderKeep();
   }));
+  let decksSeen = false;
   S.unsub.push(D.watchDecks(user.uid, list => {
     if (!list) return;
     S.decks = list;
+    if (!decksSeen) { decksSeen = true; setTimeout(autoRefresh, 1500); }
     if (S.view === 'decks' || S.view === 'home' || S.view === 'stats' || (S.view === 'setup' && !S.picker)) rerenderKeep();
   }));
   G.loadLocalDraft();
@@ -470,23 +473,40 @@ const setSettings = patch => { Object.assign(S.settings, patch); store('smb_sett
 function withTimeout(promise, ms) {
   return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('The connection is too slow right now. Try again in a moment.')), ms))]);
 }
-async function doRefresh(username, force) {
-  if (!navigator.onLine) { toast('You\u2019re offline. Refresh your decks once you\u2019re back online.', true); return null; }
+/**
+ * Refreshes your Archidekt decks, then checks the ones that need a Rule 0 check (in the background, with the banner).
+ * quiet: the day's automatic refresh, shown only in the banner, with no toasts unless something changed.
+ */
+async function doRefresh(username, force, quiet) {
+  if (!navigator.onLine) { if (!quiet) toast('You\u2019re offline. Refresh your decks once you\u2019re back online.', true); return null; }
   const a = Object.assign({}, S.settings.archidekt || {});
   if (username != null) a.username = username;
-  S.busy = 'Starting\u2026'; rerenderKeep();
+  if (quiet) RZ.banner('Updating your decks\u2026');
+  else { S.busy = 'Starting\u2026'; rerenderKeep(); }
   try {
     const res = await refreshDecks({ username: a.username, extraIds: a.extraIds || [], existing: S.decks, folders: a.folders || {}, rootId: a.rootId || '', force: !!force,
-      onProgress: msg => { S.busy = msg; const el = document.querySelector('.status'); if (el) el.textContent = msg; } });
-    if (res.decks.length) { S.busy = 'Saving\u2026'; await D.saveDecks(uid(), res.decks); }
+      onProgress: msg => { if (quiet) return; S.busy = msg; const el = document.querySelector('.status'); if (el) el.textContent = msg; } });
+    if (res.decks.length) { if (!quiet) S.busy = 'Saving\u2026'; await D.saveDecks(uid(), res.decks); }
     a.folders = res.folders; a.rootId = res.rootId; a.lastRefresh = Date.now(); a.lastSummary = res.summary;
     setSettings({ archidekt: a });
-    S.busy = ''; toast(res.summary);
+    if (!quiet) { S.busy = ''; toast(res.summary); }
+    // the Rule 0 check for decks that changed or were never checked, using the details just refreshed
+    const fresh = {}; res.decks.forEach(d => { fresh[d.id] = d; });
+    const merged = S.decks.map(d => (fresh[d.id] ? Object.assign({}, d, fresh[d.id]) : d)).concat(res.decks.filter(d => !S.decks.some(x => x.id === d.id)));
+    RZ.sweepDecks(merged.filter(d => deckInfo(d).show), { doneText: quiet ? 'Decks updated' : '' });
     return res;
   } catch (err) {
-    S.busy = ''; toast(err.message || String(err), true); rerenderKeep();
+    if (quiet) RZ.banner(null);
+    else { S.busy = ''; toast(err.message || String(err), true); rerenderKeep(); }
     return null;
   }
+}
+/** Once a day per device, on opening the app: refresh decks (and their Rule 0 checks). Only while Rule 0 check is on. */
+function autoRefresh() {
+  const a = S.settings.archidekt || {}, day = new Date().toDateString();
+  if (S.settings.ruleZero === false || !a.username || !navigator.onLine || store('smb_autodeck') === day) return;
+  store('smb_autodeck', day);
+  doRefresh(null, false, true);
 }
 
 app.addEventListener('click', async e => {

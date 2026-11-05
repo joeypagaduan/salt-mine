@@ -15,7 +15,8 @@ import {
 import { homeStatsHtml } from './stats.js';
 import { settingsImportHtml } from './importer.js';
 import { mates, linksFor } from './shared.js';
-import { openRuleZero, wantsRuleZero } from './rulezero.js';
+import { openRuleZero, wantsRuleZero, sweepDecks } from './rulezero.js';
+import { downloadGames } from './export.js';
 import { settingsOwnerHtml } from './owner.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
@@ -984,7 +985,7 @@ export function settingsGameHtml(sec) {
   if (sec === 'games') {
   h += '<div class="field"><span class="label">Start a game opens</span>' + seg('gamemode', [{ val: 'life', label: 'Life counter' }, { val: 'simple', label: 'Round counter only' }], st.gameMode || 'life') + '</div>';
   h += '<div class="field"><span class="label">Rule 0 check</span>' + seg('rulezero', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.ruleZero === false ? 'off' : 'on') +
-    '<p class="muted" style="margin-top:6px"><small>Before a Commander game with an Archidekt deck, shows its Game Changers and combos so you can tell the table. Combos come from Commander Spellbook.</small></p></div>';
+    '<p class="muted" style="margin-top:6px"><small>Before a Commander game with an Archidekt deck, shows its Game Changers, mass land denial and combos so you can tell the table. Decks are checked when they refresh, and refresh on their own once a day while this is on. Combos and mass land denial come from Commander Spellbook.</small></p></div>';
   if (st.ruleZero !== false) h += '<div class="field"><span class="label">Combos to show</span>' + seg('rzcombos', [{ val: 'two', label: 'Two-card' }, { val: 'three', label: 'Two- and three-card' }], st.ruleZeroCombos === 'three' ? 'three' : 'two') +
     '<p class="muted" style="margin-top:6px"><small>Only combos that need nothing else on the battlefield and do something infinite or win the game. Three-card lists can get long in combo decks.</small></p></div>';
   h += '<div class="field"><span class="label">Turn reminders</span>' + seg('reminders', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.reminders === false ? 'off' : 'on') +
@@ -1019,7 +1020,10 @@ export function settingsGameHtml(sec) {
   }
   if (sec === 'data') {
   const n = liveGames().length;
-  h += settingsImportHtml() + settingsOwnerHtml() +
+  // importing from classic is for the app's owner only now; everyone else starts fresh (2.0.3)
+  h += (D.isOwner(uid()) ? settingsImportHtml() : '') + settingsOwnerHtml() +
+    '<div class="panel"><p style="margin:0"><b>Download my games</b></p><p style="margin:4px 0 0">A spreadsheet (CSV) of every game you\u2019ve logged, for your own records. The app can\u2019t read it back in.</p>' +
+    '<button class="btn" style="margin-top:10px" data-act="csvgames"' + (n ? '' : ' disabled') + '>Download my games (CSV)</button></div>' +
     '<div class="panel"><p style="margin:0">Update the commander list after a new set comes out. It also updates on its own every two weeks.</p>' +
     '<button class="btn" style="margin-top:10px" data-act="refreshcmds"' + (CMD.loading ? ' disabled' : '') + '>' + (CMD.loading ? 'Downloading\u2026' : 'Refresh commander list') + '</button></div>' +
     '<p class="muted"><small>' + CMD.list.length + ' commanders on this device' + (CMD.at ? ' (updated ' + new Date(CMD.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ')' : '') +
@@ -1030,6 +1034,7 @@ export function settingsGameHtml(sec) {
 export function onSettingsAct(act, el) {
   const save = list => H.setSettings({ formats: list });
   switch (act) {
+    case 'csvgames': downloadGames(); return true;
     case 'fmtadd': {
       const list = formatList(); list.push({ name: 'New format', life: 20, set: false, event: false, team: 0, show: true });
       save(list); H.rerenderKeep();
@@ -1078,7 +1083,7 @@ export function onSettingsChange(t) {
 
 export function onSettingsSeg(name, val) {
   if (name === 'gamemode') { H.setSettings({ gameMode: val }); H.rerenderKeep(); return true; }
-  if (name === 'rulezero') { H.setSettings({ ruleZero: val === 'on' }); H.rerenderKeep(); return true; }
+  if (name === 'rulezero') { H.setSettings({ ruleZero: val === 'on' }); H.rerenderKeep(); if (val === 'on') sweepDecks(H.pickerDecks()); return true; }
   if (name === 'rzcombos') { H.setSettings({ ruleZeroCombos: val }); H.rerenderKeep(); return true; }
   if (name === 'reminders') { H.setSettings({ reminders: val === 'on' }); H.rerenderKeep(); return true; }
   if (name === 'fullscreen') {

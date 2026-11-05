@@ -4,6 +4,12 @@ import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
 
 export const VERSIONS = [
+  { v: '2.0.3', title: 'Rule 0 upgrades and your games as a spreadsheet', items: [
+    ['Added', 'Rule 0 check now counts mass land denial too (from Commander Spellbook), and always shows every count, even 0. Three-card combos show when Combos to show includes them.'],
+    ['Added', 'Each combo in the Rule 0 check links to it on Commander Spellbook.'],
+    ['Changed', 'Decks are checked for Rule 0 when they refresh, so the check shows straight away when you start a game. While Rule 0 check is on, decks refresh on their own once a day when you open the app, with a small banner while they update.'],
+    ['Added', 'Settings > Data: Download my games (CSV), a spreadsheet of every game you\u2019ve logged.'],
+    ['Removed', 'Import from classic, which was only needed to move the owner\u2019s games over.']] },
   { v: '2.0.2', title: 'Rule 0 check', items: [
     ['Added', 'Rule 0 check: when you start a Commander game with an Archidekt deck, a sheet lists its Game Changers and combos (infinite or game-winning), so you can tell the table. Copy for the table copies it as text.'],
     ['Added', 'The check is saved with the deck and only runs again after you edit the deck on Archidekt, or when you tap Check again.'],

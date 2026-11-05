@@ -179,3 +179,16 @@ ul.dellist { padding-left: 20px; line-height: 1.5; } ul.dellist li { margin-bott
 .koline .ko-r { flex: 0 0 64px; }
 .kohint { margin: -4px 0 6px; }
 .koline .ko-r input { height: 48px; box-sizing: border-box; }
+/* Rule 0 sheet counts, and the deck update banner (2.0.3) */
+.rz-sec { border-top: 1px solid var(--line); padding: 8px 0; }
+.rz-sec:first-of-type { border-top: 0; }
+.rz-count { display: flex; justify-content: space-between; align-items: baseline; color: var(--ink); }
+.rz-count b { font-family: "Barlow Condensed", sans-serif; font-size: 24px; color: var(--muted); }
+.rz-count b.hit { color: var(--accent); }
+.rz-list { margin: 2px 0 4px; padding-left: 20px; color: var(--ink); }
+.rz-list li { margin: 4px 0; }
+.rz-link { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; }
+#rzbanner { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 60;
+  background: var(--ink); color: var(--bg); padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); white-space: nowrap; max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+body[data-view="playing"] #rzbanner { display: none; }
