@@ -138,7 +138,7 @@ export function guessFolderType(name) {
 }
 
 /** The official Game Changers list from Scryfall, kept for a week. Used to estimate brackets. */
-async function gameChangers() {
+export async function gameChangers() {
   const c = store('smb_gc');
   if (c && c.list && Date.now() - c.at < 7 * 864e5) return c.list;
   const set = {};
@@ -157,17 +157,35 @@ async function gameChangers() {
 function cardName(e) { const c = e.card || {}; return (c.oracleCard && c.oracleCard.name) || c.name || e.name || ''; }
 function cardColors(e) { const c = e.card || {}; return (c.oracleCard && (c.oracleCard.colorIdentity || c.oracleCard.color_identity)) || []; }
 
-/** The parts of Archidekt's (very large) deck JSON the app uses. */
-export function parseDeck(d, gc) {
+/** The cards actually in a deck (not the maybeboard, sideboard or other left-out categories), split into commanders and the rest. */
+export function deckCardLists(d) {
   const cards = d.cards || [];
   const excluded = { maybeboard: true, sideboard: true };
   (d.categories || []).forEach(cat => { if (cat && cat.includedInDeck === false && cat.name) excluded[String(cat.name).toLowerCase()] = true; });
-  let gcCount = 0;
-  if (gc) cards.forEach(c => {
+  const commanders = [], main = [];
+  cards.forEach(c => {
     if (c.deletedAt) return;
-    if ((c.categories || []).some(x => excluded[String(x).toLowerCase()])) return;
-    if (gc[cardName(c)]) gcCount++;
+    const cats = (c.categories || []).map(x => String(x).toLowerCase());
+    if (cats.some(x => excluded[x])) return;
+    const n = cardName(c); if (!n) return;
+    const list = cats.indexOf('commander') !== -1 ? commanders : main;
+    if (list.indexOf(n) === -1) list.push(n);
   });
+  return { commanders: commanders, main: main };
+}
+/** One deck's full Archidekt details, through the relay. */
+export async function deckJson(id) {
+  if (!RELAY_URL) throw new Error('The deck relay isn\u2019t set up yet.');
+  const r = await relay({ path: 'decks/' + encodeURIComponent(String(id)) + '/' });
+  if (!r || !r.ok || !r.data) throw new Error((r && r.error) || 'Couldn\u2019t load the deck from Archidekt');
+  return r.data;
+}
+
+/** The parts of Archidekt's (very large) deck JSON the app uses. */
+export function parseDeck(d, gc) {
+  const cards = d.cards || [];
+  let gcCount = 0;
+  if (gc) { const l = deckCardLists(d); l.commanders.concat(l.main).forEach(n => { if (gc[n]) gcCount++; }); }
   let suggested = '';
   Object.keys(d).forEach(k => {
     if (k !== 'edhBracket' && /bracket/i.test(k) && suggested === '') {

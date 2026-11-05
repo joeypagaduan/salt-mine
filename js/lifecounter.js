@@ -227,9 +227,11 @@ function lcCheckOut(k) {
   else if (P.poison >= poisonMax()) { cause = 'Poison'; how = 'Infect / poison'; }
   else if (P.life <= 0 && !(LC.show && LC.show[k] != null)) { cause = 'Life'; how = 'Combat damage'; } // waits for the countdown
   if (!cause) P.hold = false;
+  // 1v1 (not teams): unless someone says otherwise, the other player knocked them out
+  if (cause && !by && L.seats.length === 2 && !teamSize()) by = L.seats.find(x => x !== k) || '';
   if (cause && !P.out && !P.hold) {
     L.outCount++;
-    P.out = { order: L.outCount, cause: cause, by: by, how: how, at: Date.now() };
+    P.out = { order: L.outCount, cause: cause, by: by, how: how, at: Date.now(), r: L.round };
     lcRollLine(k);
     LC.panel = { k: k, mode: 'out' };
     lcDesigOnOut(k);
@@ -323,7 +325,24 @@ function lcFinish() {
   L.seats.forEach(k => { const o = L.p[k].out; if (o) setPlace(k, n - o.order + 1); });
   if (alive.length === 1) setPlace(alive[0], 1);
   const me = L.p.me.out;
-  if (me) { d.elimBy = me.by ? (me.by === 'me' ? 'Myself' : lcInfo(me.by).name) : ''; d.elimHow = me.how || ''; }
+  // who knocked whom out, as names: "Myself" when it was their own doing
+  const byName = (by, k) => !by ? '' : by === k ? 'Myself' : lcInfo(by).name;
+  if (me) { d.elimBy = byName(me.by, 'me'); d.elimHow = me.how || ''; d.myOutRound = me.r || ''; }
+  // everyone else's knockouts too (2.0.2); team games are logged by hand
+  if (!teamSize()) d.opponents.forEach((o, i) => {
+    const out = L.p['o' + i] && L.p['o' + i].out;
+    if (out) { o.elimBy = byName(out.by, 'o' + i); o.elimHow = out.how || ''; o.outRound = out.r || ''; }
+  });
+  // best of 3: each game as it happened, the one on the table included
+  if (d.bo3 && L.seats.length === 2 && !teamSize()) {
+    const games = ((d.match && d.match.games) || []).slice(), alive0 = lcAlive();
+    if (alive0.length === 1) {
+      const w = alive0[0], lo = L.seats.find(x => x !== w), o = L.p[lo].out || {};
+      games.push({ winner: w, loser: lo, by: o.by || '', how: o.how || '', r: o.r || L.round });
+    }
+    d.matchGames = games.filter(g => g.loser).map(g => ({ winner: lcInfo(g.winner).name, loser: lcInfo(g.loser).name,
+      by: g.by ? byName(g.by, g.loser) : lcInfo(g.winner).name, how: g.how || '', round: g.r || g.rounds || '' }));
+  }
   if (alive.length === 1) {
     const last = L.seats.filter(k => L.p[k].out).sort((a, b) => L.p[b].out.order - L.p[a].out.order)[0];
     if (last && L.p[last].out.how) d.winCondition = L.p[last].out.how;
@@ -1247,9 +1266,8 @@ function lcMount() {
   if (S.draft.announceFirst) { S.draft.announceFirst = false; H.touch(); setTimeout(() => lcPickFirst(S.draft.firstKey), 350); }
   clearInterval(LC.timer);
   LC.timer = setInterval(lcUpdate, 1000);
-  try { if (navigator.wakeLock && !LC.wake) navigator.wakeLock.request('screen').then(l => { LC.wake = l; l.addEventListener('release', () => { LC.wake = null; }); }).catch(() => {}); } catch (e) {}
 }
-function lcUnmount() { if (LC.anims || LC.curAnim) lcAnimClear(); clearInterval(LC.timer); LC.timer = null; if (LC.wake) { try { LC.wake.release(); } catch (e) {} LC.wake = null; } }
+function lcUnmount() { if (LC.anims || LC.curAnim) lcAnimClear(); clearInterval(LC.timer); LC.timer = null; } // keeping the screen on: see wake.js
 
 function lcAction(act, el) {
   const d = S.draft, L = d.life, k = el.dataset.k;
@@ -1311,7 +1329,8 @@ function lcAction(act, el) {
       if (alive.length !== 1) return;
       const winner = alive[0], loser = L.seats.find(x => x !== winner);
       d.match = d.match || { games: [] };
-      d.match.games.push({ winner: winner, first: L.first, rounds: L.round });
+      const lo = L.p[loser].out || {};
+      d.match.games.push({ winner: winner, first: L.first, rounds: L.round, loser: loser, by: lo.by || '', how: lo.how || '', r: lo.r || L.round });
       const tt = lcTurnTimes(); d.timeCarry = {}; Object.keys(tt).forEach(x => { d.timeCarry[x] = tt[x]; }); // keep turn times across the match
       const seats = L.seats.slice();
       d.life = null;
@@ -1328,7 +1347,7 @@ function lcAction(act, el) {
     case 'outby': L.p[k].out.by = el.dataset.val; lcRollLine(k); H.touch(); lcUpdate(); return lcRenderSheets();
     case 'outhow': L.p[k].out.how = el.dataset.val; lcRollLine(k); H.touch(); lcUpdate(); return lcRenderSheets();
     case 'markout':
-      L.outCount++; L.p[k].out = { order: L.outCount, cause: 'manual', by: '', how: 'Concession', manual: true, at: Date.now() }; lcRollLine(k); lcDesigOnOut(k);
+      L.outCount++; L.p[k].out = { order: L.outCount, cause: 'manual', by: '', how: 'Concession', manual: true, at: Date.now(), r: L.round }; lcRollLine(k); lcDesigOnOut(k);
       LC.panel = { k: k, mode: 'out' }; lcCheckOver(); H.touch(); lcRenderSheets(); lcUpdate(); return lcRenderOverlays();
     case 'revive': L.p[k].hold = true; lcRevive(k); H.touch(); lcRenderSheets(); lcRenderOverlays(); return lcUpdate();
     case 'pick': if (S.draft.life.hist.some(h => h.ty === 'turn') && !confirm('Pick a new first player and restart the round count?')) return; return lcPickFirst();

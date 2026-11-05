@@ -4,6 +4,14 @@ import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
 
 export const VERSIONS = [
+  { v: '2.0.2', title: 'Rule 0 check', items: [
+    ['Added', 'Rule 0 check: when you start a Commander game with an Archidekt deck, a sheet lists its Game Changers and combos (infinite or game-winning), so you can tell the table. Copy for the table copies it as text.'],
+    ['Added', 'The check is saved with the deck and only runs again after you edit the deck on Archidekt, or when you tap Check again.'],
+    ['Added', 'Settings > During games: turn the Rule 0 check on or off, and choose two-card combos only or two- and three-card combos.'],
+    ['Added', 'Tap a game in Recent games to see it: where everyone finished, and for each knockout the round, who did it and how, when noted. Edit game is at the bottom.'],
+    ['Added', 'Everyone\u2019s knockouts are saved now, not just yours: from the life counter, or filled in on the results screen (optional). Each game of a best of 3 is kept too.'],
+    ['Changed', 'In a 1v1 game, the winner is credited with knocking out the loser unless you choose someone else. Draws and team games aren\u2019t credited.'],
+    ['Fixed', 'The screen stays on during a game, in Round counter only too, and after you switch apps and come back.']] },
   { v: '2.0.1', title: 'No more Beta badge', items: [
     ['Removed', 'The Beta badge on the home screen header and the app icon.']] },
   { v: '2.0.0', title: 'The Salt Mine', items: [

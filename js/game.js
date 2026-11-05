@@ -37,7 +37,7 @@ export function newDraft() {
   return { id: 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), stage: 'setup', gameId: null,
     createdAt: Date.now(), updatedAt: Date.now(), date: today(), deckId: '', deckName: '',
     podSize: 4, mySeat: null, opponents: [blankOpp(), blankOpp(), blankOpp()], turns: 1, notes: '', myPlace: null,
-    winCondition: '', winOther: '', elimBy: '', elimHow: '', draw: false,
+    winCondition: '', winOther: '', elimBy: '', elimHow: '', myOutRound: '', draw: false,
     format: '', set: '', startLife: '', bo3: false, myColors: '', event: null, matchW: null, matchL: null };
 }
 export function resizePod(n, d) {
@@ -202,11 +202,13 @@ export function gameToDraft(g) {
     stage: 'ending', gameId: g.gameId, date: g.date, deckId: g.deckId, deckName: g.deckName, podGuess: +g.podSize ? null : pod,
     podSize: pod, mySeat: g.mySeat || null, myPlace: g.myPlace || null,
     turns: g.turns || '', notes: g.notes || '', winCondition: g.winCondition || '', winOther: g.winOther || '',
-    elimBy: g.elimBy || '', elimHow: g.elimHow || '', draw: g.resultType === DRAW_RESULT,
+    elimBy: g.elimBy || '', elimHow: g.elimHow || '', myOutRound: g.myOutRound || '', draw: g.resultType === DRAW_RESULT,
+    matchGames: (g.matchGames || []).map(x => Object.assign({}, x)),
     // turn times from the life counter are kept when a game is edited
     myTurnTime: g.myTurnTime || null, myTurnsTaken: g.myTurnsTaken || null,
     opponents: g.opponents.map(o => ({ player: o.player, c1: o.c1, c2: o.c2, seat: o.seat || null, place: o.place || null, showC2: !!o.c2, deck: o.deck || '', colors: o.colors || '', team: o.team || '',
-      turnTime: o.turnTime || null, turnsTaken: o.turnsTaken || null, uid: o.uid || null, keep: o.keep || null }))
+      turnTime: o.turnTime || null, turnsTaken: o.turnsTaken || null, uid: o.uid || null, keep: o.keep || null,
+      elimBy: o.elimBy || '', elimHow: o.elimHow || '', outRound: o.outRound || '' }))
   });
   if (g.format && g.format !== 'Commander') {
     const m = String(g.matchScore || '').match(/^(\d+)-(\d+)$/), ev = S.events.find(x => x.id === g.eventId);
@@ -257,7 +259,7 @@ export function toRecord(d, prev) {
     // the bracket the deck had when the game was played: kept as it was when you edit the game later
     bracket: prevMe && prev.deckId === d.deckId ? nul(prevMe.bracket) : (cmd && deck && deck.bracket !== '' && deck.bracket != null ? deck.bracket : null),
     deck: '', seat: num(d.mySeat), place: myPlace || null, team: ts ? 'A' : '',
-    elimBy: myPlace > 1 ? str(d.elimBy) : '', elimHow: myPlace > 1 ? str(d.elimHow) : '',
+    elimBy: myPlace > 1 ? str(d.elimBy) : '', elimHow: myPlace > 1 ? str(d.elimHow) : '', outRound: myPlace > 1 ? num(d.myOutRound) : null,
     turnTime: num(d.myTurnTime), turnsTaken: num(d.myTurnsTaken)
   };
   if (prevMe && prevMe.guestName) me.guestName = prevMe.guestName;
@@ -267,12 +269,14 @@ export function toRecord(d, prev) {
       deckId: '', deckName: '', c1: cmd ? str(o.c1) : '', c2: cmd ? str(o.c2) : '',
       colors: cmd ? cmdColors(o.c1, o.c2) : str(o.colors), bracket: null,
       deck: cmd ? '' : str(o.deck), seat: num(o.seat), place: num(o.place), team: str(o.team),
-      elimBy: '', elimHow: '', turnTime: num(o.turnTime), turnsTaken: num(o.turnsTaken)
+      // how they went out, when it was noted (2.0.2); a winner has none
+      elimBy: +o.place === 1 ? '' : str(o.elimBy), elimHow: +o.place === 1 ? '' : str(o.elimHow), outRound: +o.place === 1 ? null : num(o.outRound),
+      turnTime: num(o.turnTime), turnsTaken: num(o.turnsTaken)
     };
     // a playgroup-mate's seat keeps the deck they tagged, their bracket and how they went out (Phase 5b)
     const k = o.uid && o.keep && o.keep.uid === o.uid ? o.keep : null;
     if (k) {
-      ['deckId', 'deckName', 'bracket', 'elimBy', 'elimHow'].forEach(f => { if (k[f] != null && k[f] !== '') seat[f] = k[f]; });
+      ['deckId', 'deckName', 'bracket', 'elimBy', 'elimHow', 'outRound'].forEach(f => { if (k[f] != null && k[f] !== '') seat[f] = k[f]; });
       if (cmd && k.deckId && k.c1 === seat.c1 && k.c2 === seat.c2 && k.colors) seat.colors = k.colors;
       if (k.name) seat.name = k.name; // their own name, not the one shown here
     }
@@ -280,12 +284,23 @@ export function toRecord(d, prev) {
     else if (k && k.guestName) seat.guestName = k.guestName;
     return seat;
   }));
+  // 1v1 (not teams, not a draw): unless someone says otherwise, the winner knocked out the loser
+  if (seats.length === 2 && +d.podSize === 2 && !podUnknown && !ts && !d.draw && myPlace) {
+    const w = myPlace === 1 ? seats[0] : seats[1], l = myPlace === 1 ? seats[1] : seats[0];
+    if (!seats[1].place) seats[1].place = myPlace === 1 ? 2 : 1;
+    if (!l.elimBy) l.elimBy = w.name || 'Opponent';
+    if (l === seats[0]) { seats[1].elimBy = ''; seats[1].elimHow = ''; seats[1].outRound = null; } // they won
+  }
+  // best of 3: each game's result, kept as it happened (winner, who knocked out the loser, how, which round)
+  const matchGames = !cmd && d.bo3 && two && !ts ? (d.matchGames || []).filter(x => x && x.winner).map(x => ({
+    winner: str(x.winner), loser: str(x.loser), by: str(x.by) || str(x.winner), how: str(x.how), round: num(x.round) })) : [];
   return {
     schema: 1, date: d.date || today(), format: cmd ? 'Commander' : String(d.format),
     set: cmd ? '' : str(d.event ? d.event.set : d.set), startLife: startLife(d), bo3: !cmd && !!d.bo3 && two,
     matchScore: matchScore, playDraw: playDraw, eventId: !cmd && d.event && d.event.id ? String(d.event.id) : '',
     podSize: podUnknown ? null : (+d.podSize || seats.length), turns: num(d.turns), winCondition: str(d.winCondition),
-    winOther: d.winCondition === 'Other' ? str(d.winOther) : '', draw: !!d.draw, notes: str(d.notes), seats: seats
+    winOther: d.winCondition === 'Other' ? str(d.winOther) : '', draw: !!d.draw, notes: str(d.notes), seats: seats,
+    matchGames: matchGames
   };
 }
 
@@ -302,11 +317,13 @@ export function fromRecord(id, rec, pending) {
     c1: me.c1 || '', c2: me.c2 || '', colors: me.colors || '',
     // games imported from classic's old spreadsheet may not say how many played
     podSize: rec.podSize || (seats.length > 1 ? seats.length : ''), mySeat: me.seat || null, myPlace: me.place || null, turns: rec.turns || '',
-    winCondition: rec.winCondition || '', winOther: rec.winOther || '', elimBy: me.elimBy || '', elimHow: me.elimHow || '',
+    winCondition: rec.winCondition || '', winOther: rec.winOther || '', elimBy: me.elimBy || '', elimHow: me.elimHow || '', myOutRound: me.outRound || '',
+    matchGames: rec.matchGames || [],
     resultType: rec.draw ? DRAW_RESULT : (+me.place === 1 ? 'Win' : 'Loss'), draw: !!rec.draw, notes: rec.notes || '',
     opponents: others.map(s => ({ player: (s.uid && H.personName && H.personName(s.uid)) || s.name || '', c1: s.c1 || '', c2: s.c2 || '', seat: s.seat || null, place: s.place || null,
       deck: s.deck || '', colors: s.colors || '', team: rel(s.team), uid: s.uid || null, turnTime: s.turnTime || null, turnsTaken: s.turnsTaken || null,
-      tagged: s.uid ? s.deckName || '' : '', keep: s.uid ? Object.assign({}, s) : null })),
+      tagged: s.uid ? s.deckName || '' : '', keep: s.uid ? Object.assign({}, s) : null,
+      elimBy: s.elimBy || '', elimHow: s.elimHow || '', outRound: s.outRound || '' })),
     format: rec.format || 'Commander', set: rec.set || '', startLife: rec.startLife || '', matchScore: rec.matchScore || '',
     bo3: !!rec.bo3, eventId: rec.eventId || '', myColors: rec.format && rec.format !== 'Commander' ? me.colors || '' : '', playDraw: rec.playDraw || '',
     myTurnTime: me.turnTime || null, myTurnsTaken: me.turnsTaken || null,

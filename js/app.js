@@ -3,6 +3,7 @@
 import { APP_VERSION } from './config.js';
 import { esc, store, toast, seg, manaGradient, normalizeColors, PRESETS, themeColors, applyTheme, schemeSwatch } from './util.js';
 import * as D from './data.js';
+import { keepAwake } from './wake.js';
 import { refreshDecks, parseDeckIds } from './archidekt.js';
 import { S } from './state.js';
 import { fromRecord, sortGames, withRecords } from './game.js';
@@ -103,7 +104,7 @@ function startWatching(user) {
     S.gamesLoaded = true;
     S.events = withRecords(S.eventsRaw);
     G.saveGamesCache();
-    softRender(['home', 'recent', 'stats', 'inbox', 'history', 'deleted']);
+    softRender(['home', 'recent', 'gameview', 'stats', 'inbox', 'history', 'deleted']);
   }, err => { S.gamesLoaded = true; toast('Couldn\u2019t load your games: ' + (err.code || err.message), true); softRender(['home', 'recent', 'stats']); }));
   S.unsub.push(D.watchEvents(user.uid, list => {
     if (!list) return;
@@ -117,7 +118,7 @@ function startWatching(user) {
 G.H.regames = () => {
   if (!S.games.some(g => g.raw && (g.raw.seats || []).some(x => x.uid && x.uid !== uid()))) return;
   S.games = sortGames(S.games.map(g => { if (!g.raw) return g; const n = fromRecord(g.gameId, g.raw, g.pending); n.doc = g.doc; return n; }));
-  softRender(['home', 'recent', 'stats', 'inbox']);
+  softRender(['home', 'recent', 'gameview', 'stats', 'inbox']);
 };
 /** Redraws once per frame at most, however many updates arrive together (a sync can bring many at once). */
 let softRaf = 0, softViews = {};
@@ -193,12 +194,13 @@ function go(view, fromBack) {
 }
 function render() {
   const views = { loading: viewLoading, signin: viewSignIn, noconn: viewNoConn, welcome: viewWelcome, archsetup: viewArchSetup, home: viewHome, decks: viewDecks, settings: viewSettings,
-    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted, privacy: HP.viewPrivacy, install: HP.viewInstall, support: HP.viewSupport, setsec: viewSetSec, delacct: AC.viewDelAcct, changelog: CH.viewChangelog };
+    setup: G.viewSetup, playing: G.viewPlaying, ending: G.viewEnd, gameview: G.viewGame, recent: G.viewRecent, stats: ST.viewStats, import: IM.viewImport, groups: GR.viewGroups, group: GR.viewGroup, join: GR.viewJoin, inbox: SH.viewInbox, linkguest: SH.viewLinkGuest, history: OW.viewHistory, deleted: OW.viewDeleted, privacy: HP.viewPrivacy, install: HP.viewInstall, support: HP.viewSupport, setsec: viewSetSec, delacct: AC.viewDelAcct, changelog: CH.viewChangelog };
   if (G.isEditingView(S.view) && !S.draft) S.view = 'home';
   document.body.dataset.view = S.view;
   app.innerHTML = (views[S.view] || viewHome)() + (S.picker && S.draft ? G.viewPicker() : '') + (S.form ? viewDeckForm() : '') + (S.sheetDeck ? viewDeckSheet() : '');
   G.afterRender();
   if (S.view === 'stats') ST.afterStats();
+  keepAwake(S.view === 'playing' && !!S.draft);
 }
 function rerenderKeep() {
   const y = window.scrollY, a = document.activeElement, id = a && a.id, pos = a && a.selectionStart;
@@ -450,7 +452,7 @@ function setSectionHtml(sec) {
       '<button class="btn" style="margin-top:14px" data-act="signout">Sign out</button>' +
       '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from The Salt Mine. This can\u2019t be undone.</p>' +
       '<button class="btn danger" data-act="delacct">Delete my account</button>' +
-      '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00a9Wizards of the Coast LLC.</small></p>';
+      '<p class="muted" style="margin-top:14px"><small>Card data and images come from Scryfall and Archidekt. Combo data comes from Commander Spellbook. The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00a9Wizards of the Coast LLC.</small></p>';
   }
   return h;
 }

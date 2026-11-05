@@ -15,6 +15,7 @@ import {
 import { homeStatsHtml } from './stats.js';
 import { settingsImportHtml } from './importer.js';
 import { mates, linksFor } from './shared.js';
+import { openRuleZero, wantsRuleZero } from './rulezero.js';
 import { settingsOwnerHtml } from './owner.js';
 import { lcHtml, lcAfterRender, lcResetUi, lcClick, lcEmblemSearch, LC_LAYOUTS, lcLayout, layoutPreview, ELIM_CATS, elimLines } from './lifecounter.js';
 export { H, lcResetUi, lcClick };
@@ -299,11 +300,50 @@ export function viewPlaying() {
 }
 
 /* ---------- results ---------- */
+/** A 1v1 game (two players, not teams): the winner is credited with the knockout unless you say otherwise. */
+const oneVsOne = d => +d.podSize === 2 && sides(d) === 2 && !teamSize(d) && !d.draw;
+/** Options for "knocked out by": [value, label] pairs; the empty choice names the 1v1 default when there is one. */
+function koOpts(list, cur, def) {
+  return '<option value="">' + (def ? esc(def) : 'Choose\u2026') + '</option>' +
+    list.map(v => '<option value="' + esc(v[0]) + '"' + (v[0] === cur ? ' selected' : '') + '>' + esc(v[1]) + '</option>').join('');
+}
+/** Everyone else's knockouts, and each game of a best of 3: optional, tucked away unless something's filled in. */
+function knockoutsHtml(d) {
+  const me = myName() || 'You', v1 = oneVsOne(d), team = teamSize(d);
+  const who = d.opponents.map((o, i) => ({ o: o, i: i })).filter(x => +x.o.place !== 1 && !(v1 && +d.myPlace !== 1));
+  let h = '';
+  if (who.length) {
+    const open = S.open.kobox || who.some(x => x.o.elimBy || x.o.elimHow || x.o.outRound);
+    h += '<details id="kobox"' + (open ? ' open' : '') + '><summary>' + (who.length === 1 ? esc(oppName(who[0].o, who[0].i)) + '\u2019s knockout (optional)' : 'Everyone\u2019s knockouts (optional)') + '</summary>';
+    who.forEach(x => {
+      const killers = [[me, 'You']].concat(d.opponents.map((o, j) => j === x.i ? null : [oppName(o, j), oppName(o, j)]).filter(Boolean)).concat([['Myself', 'Themselves']]);
+      h += (who.length > 1 ? '<span class="label" style="margin-top:10px">' + esc(oppName(x.o, x.i)) + '</span>' : '') +
+        '<div class="row endrow koline"><div class="field"><label for="kb' + x.i + '">Knocked out by</label><select id="kb' + x.i + '" data-ofield="' + x.i + '|elimBy">' + koOpts(killers, x.o.elimBy, v1 ? me : '') + '</select></div>' +
+        '<div class="field"><label for="kh' + x.i + '">How?</label><select id="kh' + x.i + '" data-ofield="' + x.i + '|elimHow">' + koOpts(WINCONS.map(w => [w, w]), x.o.elimHow, '') + '</select></div>' +
+        '<div class="field ko-r"><label for="kr' + x.i + '">Round</label><input type="number" inputmode="numeric" min="1" id="kr' + x.i + '" data-ofield="' + x.i + '|outRound" value="' + esc(x.o.outRound || '') + '"></div></div>' +
+        (v1 && !x.o.elimBy ? '<p class="muted kohint"><small>You get the knockout unless you choose someone else.</small></p>' : '');
+    });
+    h += '</details>';
+  }
+  const games = d.bo3 && sides(d) === 2 && !team ? d.matchGames || [] : [];
+  if (games.length) {
+    h += '<details id="mgbox"' + (S.open.mgbox ? ' open' : '') + '><summary>Each game of the match (optional)</summary>';
+    games.forEach((g, j) => {
+      h += '<span class="label" style="margin-top:10px">Game ' + (j + 1) + ': ' + esc(g.winner) + ' won</span>' +
+        '<div class="row endrow koline"><div class="field"><label for="mb' + j + '">Knocked out by</label><select id="mb' + j + '" data-mgame="' + j + '|by">' +
+        koOpts([[g.winner, g.winner], ['Myself', g.loser + ' (themselves)']], g.by === g.winner ? '' : g.by, g.winner) + '</select></div>' +
+        '<div class="field"><label for="mh' + j + '">How?</label><select id="mh' + j + '" data-mgame="' + j + '|how">' + koOpts(WINCONS.map(w => [w, w]), g.how, '') + '</select></div>' +
+        '<div class="field ko-r"><label for="mr' + j + '">Round</label><input type="number" inputmode="numeric" min="1" id="mr' + j + '" data-mgame="' + j + '|round" value="' + esc(g.round || '') + '"></div></div>';
+    });
+    h += '</details>';
+  }
+  return h;
+}
 export function viewEnd() {
   const d = S.draft;
   const opts = (list, cur) => '<option value="">Choose\u2026</option>' + list.map(v => '<option' + (v === cur ? ' selected' : '') + '>' + esc(v) + '</option>').join('');
   const winnerIdx = d.opponents.findIndex(o => +o.place === 1);
-  const back = d.gameId ? ['home', 'Home'] : d.quick ? ['editsetup', 'Players'] : ['backtogame', 'Back to game'];
+  const back = d.gameId ? (S.viewGameId === d.gameId ? ['backtoview', 'Game'] : ['home', 'Home']) : d.quick ? ['editsetup', 'Players'] : ['backtogame', 'Back to game'];
   let h = '<header class="top"><button class="link back" data-act="' + back[0] + '">\u2039 ' + back[1] + '</button><button class="link" data-act="editsetup">Edit pod</button></header>';
   h += '<h1>' + (d.gameId ? 'Edit game' : d.quick ? 'Log a game' : 'How did it go?') + '</h1>';
   const cmd = isCmd(d), two = sides(d) === 2, team = teamSize(d);
@@ -341,10 +381,15 @@ export function viewEnd() {
   const youWon = +d.myPlace === 1;
   h += '<div class="field"><label for="wc">' + (youWon ? 'How did you win?' : 'How did the winner win?') + '</label><select id="wc" data-field="winCondition">' + opts(WINCONS, d.winCondition) + '</select></div>';
   if (d.winCondition === 'Other') h += '<div class="field"><label for="wo">Describe it</label><input type="text" id="wo" data-field="winOther" value="' + esc(d.winOther) + '"></div>';
+  // knockouts: who, how and which round, all optional (in 1v1 the winner is credited unless you choose someone else)
+  const v1 = oneVsOne(d);
   if (d.myPlace && +d.myPlace > 1) {
     const names = d.opponents.map((o, i) => oppName(o, i)).concat(['Myself']);
-    h += '<div class="row endrow"><div class="field"><label for="eb">Who knocked you out?</label><select id="eb" data-field="elimBy">' + opts(names, d.elimBy) + '</select></div>' +
-      '<div class="field"><label for="eh">How?</label><select id="eh" data-field="elimHow">' + opts(WINCONS, d.elimHow) + '</select></div></div>';
+    h += '<div class="row endrow koline"><div class="field"><label for="eb">Knocked out by</label><select id="eb" data-field="elimBy">' +
+      koOpts(names.map(n => [n, n]), d.elimBy, v1 ? oppName(d.opponents[0], 0) : '') + '</select></div>' +
+      '<div class="field"><label for="eh">How?</label><select id="eh" data-field="elimHow">' + opts(WINCONS, d.elimHow) + '</select></div>' +
+      '<div class="field ko-r"><label for="er">Round</label><input type="number" inputmode="numeric" min="1" id="er" data-field="myOutRound" value="' + esc(d.myOutRound || '') + '"></div></div>' +
+      (v1 && !d.elimBy ? '<p class="muted kohint"><small>The winner gets the knockout unless you choose someone else.</small></p>' : '');
   }
   h += '<div class="field"><label for="turns">Rounds</label><input type="number" inputmode="numeric" min="1" id="turns" data-field="turns" value="' + esc(d.turns) + '"></div>';
   if (!two) {
@@ -354,6 +399,7 @@ export function viewEnd() {
     });
     h += '</details>';
   }
+  h += knockoutsHtml(d);
   h += '<div class="field"><label for="notes">Notes</label><textarea id="notes" data-field="notes">' + esc(d.notes) + '</textarea></div>';
   if (d.gameId) h += '<button class="link danger" data-act="delete">Delete this game</button>';
   if (d.myPlace) h += '<button class="btn" style="margin-top:14px" data-act="shareend">Share result</button>';
@@ -366,6 +412,58 @@ const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 // games someone else logged show up once you accept them (until then they wait in your inbox)
 const liveGames = () => S.games.filter(g => !g.deleted && g.accepted);
 const gameById = id => S.games.find(g => g.gameId === id);
+/* ---------- one game, view only (2.0.2) ---------- */
+// Only what the game actually has shows here: anything not noted is left out, and Edit is where it can be added.
+export function viewGame() {
+  const g = gameById(S.viewGameId);
+  let h = '<header class="top"><button class="link back" data-act="viewback">\u2039 Games</button><h3>Game</h3><span style="width:60px"></span></header>';
+  if (!g) return h + '<p class="muted">This game isn\u2019t here anymore.</p>';
+  const cmd = !g.format || g.format === 'Commander', me = myName() || 'You';
+  const isMe = n => n && (n === me || n === 'You');
+  const pod = +g.podSize || 0;
+  // the headline: where you finished, or the match score
+  let head;
+  if (g.draw) head = 'Draw';
+  else if (!cmd && g.matchScore) head = (+g.myPlace === 1 ? 'Won ' : 'Lost ') + g.matchScore;
+  else if (+g.myPlace && pod > 2) head = ordinal(+g.myPlace) + ' of ' + pod;
+  else head = +g.myPlace === 1 ? 'Won' : +g.myPlace ? 'Lost' : 'Result not noted';
+  const sub = [niceDate(g.date), cmd ? 'Commander' : g.format + (g.set ? ' (' + g.set + ')' : ''), pod ? pod + ' players' : '', +g.turns ? g.turns + ' rounds' : ''].filter(Boolean);
+  h += '<div class="gv-hero' + (+g.myPlace === 1 && !g.draw ? ' won' : '') + '"><b>' + esc(head) + '</b><span>' + esc(sub.join(' \u00b7 ')) + '</span></div>';
+  const deck = cmd ? deckById(g.deckId) : null, label = cmd ? (deck ? deck.name : g.deckName || cmdLabel(g)) : (g.deckName || g.format);
+  if (label) h += '<div class="deck gv-deck"><span class="stripe" style="background:' + manaGradient(deck ? deck.colors : g.colors || g.myColors || 'C') + '"></span><span class="txt"><span class="name">' + esc(label) + '</span>' +
+    (cmd && cmdLabel(g) && cmdLabel(g) !== label ? '<span class="cmd">' + esc(cmdLabel(g)) + '</span>' : '') + '</span>' +
+    (g.bracket !== '' && g.bracket != null ? '<span class="badge">B' + esc(g.bracket) + '</span>' : '') + '</div>';
+  const won = g.winCondition === 'Other' ? g.winOther : g.winCondition;
+  if (won && !g.draw) h += '<p class="gv-how">' + (+g.myPlace === 1 ? 'You won by ' : 'Won by ') + esc(won.charAt(0).toLowerCase() + won.slice(1)) + '</p>';
+  // everyone at the table, winner first; each knockout shows only the parts that were noted
+  const ko = (p, self) => {
+    const by = !p.by ? '' : p.by === 'Myself' ? (self ? 'by yourself' : 'by themselves') : 'by ' + (isMe(p.by) ? 'you' : p.by);
+    return [+p.round ? 'Round ' + p.round : '', by, p.how].filter(Boolean).join(' \u00b7 ');
+  };
+  const people = [{ name: 'You', place: g.myPlace, deck: cmd ? cmdLabel(g) : g.deckName, by: g.elimBy, how: g.elimHow, round: g.myOutRound, self: true }]
+    .concat(g.opponents.map((o, i) => ({ name: oppName(o, i), place: o.place, deck: cmd ? [o.c1, o.c2].filter(Boolean).map(shortCmd).join(' + ') : o.deck, team: o.team === 'A',
+      by: o.elimBy, how: o.elimHow, round: o.outRound })))
+    .filter(p => p.self || String(p.name).indexOf('Opponent ') !== 0 || p.deck || p.place);
+  people.forEach((p, i) => { p.n = i; });
+  people.sort((a, b) => (+a.place || 99) - (+b.place || 99) || a.n - b.n);
+  h += '<span class="label" style="margin-top:16px">Players</span><ul class="gv-players">' + people.map(p => {
+    const line = +p.place === 1 && !g.draw ? '' : ko(p, p.self);
+    return '<li><span class="gv-place' + (+p.place === 1 && !g.draw ? ' first' : '') + '">' + (+p.place ? esc(ordinal(+p.place)) : '') + '</span><span class="gv-who"><b>' + esc(p.name) +
+      (p.team ? ' <small class="muted">(team)</small>' : '') + '</b>' + (p.deck ? '<small>' + esc(p.deck) + '</small>' : '') + (line ? '<small class="gv-ko">' + esc(line) + '</small>' : '') + '</span></li>';
+  }).join('') + '</ul>';
+  // best of 3: each game as it went
+  if ((g.matchGames || []).length) {
+    h += '<span class="label" style="margin-top:16px">Games</span><ul class="gv-players">' + g.matchGames.map((m, j) => {
+      const by = m.by && m.by !== m.winner ? (m.by === 'Myself' ? 'by ' + (isMe(m.loser) ? 'yourself' : 'themselves') : 'by ' + (isMe(m.by) ? 'you' : m.by)) : '';
+      const line = [+m.round ? 'Round ' + m.round : '', by, m.how].filter(Boolean).join(' \u00b7 ');
+      return '<li><span class="gv-place">' + (j + 1) + '</span><span class="gv-who"><b>' + esc(isMe(m.winner) ? 'You won' : m.winner + ' won') + '</b>' + (line ? '<small class="gv-ko">' + esc(line) + '</small>' : '') + '</span></li>';
+    }).join('') + '</ul>';
+  }
+  if (String(g.notes || '').trim()) h += '<span class="label" style="margin-top:16px">Notes</span><p class="gv-notes">' + esc(g.notes) + '</p>';
+  if (g.updatedBy && g.createdBy && g.updatedBy !== g.createdBy) h += '<p class="muted"><small>Edited by ' + esc(g.updatedBy === uid() ? 'you' : (H.personName && H.personName(g.updatedBy)) || 'a player') + '</small></p>';
+  h += '<div class="bar"><div class="inner">' + (lockedFor(g) ? '<p class="muted" style="text-align:center;margin:8px 0">This game is locked.</p>' : '<button class="btn primary" data-act="editgame">Edit game</button>') + '</div></div>';
+  return h;
+}
 export function viewRecent() {
   const sel = S.sel, list = liveGames(), shown = list.slice(0, S.recentShown);
   let h = '<header class="top"><button class="link back" data-act="home">\u2039 Home</button><h3>Recent games</h3><span style="width:60px"></span></header>';
@@ -439,6 +537,13 @@ export function viewPicker() {
 }
 
 /* ---------- share ---------- */
+/** Leaves setup and starts the game (after the Rule 0 check, when there is one). */
+function beginGame(d) {
+  ensureFirstPlayer(); rememberPlayers();
+  d.stage = 'playing'; touch();
+  if (S.settings.gameMode === 'simple' && d.announceFirst) { d.announceFirst = false; toast(lcInfo(d.firstKey).name + (plural(d.firstKey) ? ' go first' : ' goes first')); }
+  H.go('playing');
+}
 function openShare(text) {
   if (navigator.share) { navigator.share({ text: text }).catch(err => { if (!err || err.name !== 'AbortError') shareSheet(text); }); return; }
   shareSheet(text);
@@ -653,7 +758,7 @@ function saveGame(btn) {
   S.lastGame = edited ? null : fromRecord(id, rec);
   dropDraft();
   toast(edited ? 'Changes saved' : (+rec.seats[0].place === 1 && !rec.draw ? 'Game saved. Nice win.' : 'Game saved') + (navigator.onLine ? '' : '. It syncs when you\u2019re back online.'));
-  H.go('home');
+  H.go(edited && S.viewGameId === id ? 'gameview' : 'home');
 }
 function hide(ids) {
   if (ids.map(gameById).some(g => g && g.cached)) { stillLoading({ cached: true }); return -1; }
@@ -725,10 +830,8 @@ export function onAct(act, el) {
       if (!isCmd(d) && d.event && !d.event.existing && !String(d.event.set || '').trim()) { toast('Type the set for this event first.', true); return true; }
       if (!isCmd(d)) d.deckName = deckLabel(d);
       if (d.gameId || d.stage === 'ending' || d.quick) { rememberPlayers(); d.stage = 'ending'; touch(); H.go('ending'); return true; }
-      ensureFirstPlayer(); rememberPlayers();
-      d.stage = 'playing'; touch();
-      if (S.settings.gameMode === 'simple' && d.announceFirst) { d.announceFirst = false; toast(lcInfo(d.firstKey).name + (plural(d.firstKey) ? ' go first' : ' goes first')); }
-      H.go('playing'); return true;
+      if (isCmd(d) && wantsRuleZero(d, deckById(d.deckId))) { openRuleZero(deckById(d.deckId), () => { const cur = S.draft; if (cur && cur.stage === 'setup' && !cur.gameId) beginGame(cur); }); return true; }
+      beginGame(d); return true;
     case 'editsetup': H.go('setup'); return true;
     case 'turn+': case 'turn-':
       d.turns = Math.max(1, (+d.turns || 1) + (act === 'turn+' ? 1 : -1)); touch();
@@ -745,6 +848,13 @@ export function onAct(act, el) {
     case 'edit': {
       const id = el.dataset.id;
       if (S.sel) { if (S.sel[id]) delete S.sel[id]; else S.sel[id] = true; K(); return true; }
+      if (!gameById(id)) return true;
+      S.viewGameId = id; H.go('gameview'); return true;
+    }
+    case 'backtoview': H.go('gameview'); return true;
+    case 'viewback': H.go('recent'); return true;
+    case 'editgame': {
+      const id = S.viewGameId;
       const g = gameById(id); if (!g) return true;
       if (lockedFor(g)) { toast('This game is locked.', true); return true; }
       if (d && !(d.gameId === id) && !confirm('Discard the game in progress and edit this one instead?')) return true;
@@ -811,14 +921,25 @@ export function onSegG(name, val) {
   touch(); H.rerenderKeep(); return true;
 }
 /** Typing in a game screen's fields. */
+/** An opponent's knockout field, or one game of a best of 3, from the edit screen. */
+function koField(t) {
+  const ds = t.dataset || {}, d = S.draft;
+  if (!d || !(ds.ofield || ds.mgame)) return false;
+  const [i, f] = (ds.ofield || ds.mgame).split('|');
+  const target = ds.ofield ? d.opponents[+i] : (d.matchGames || [])[+i];
+  if (target) { target[f] = t.value; touch(); }
+  return true;
+}
 export function onInputG(t) {
   if (lcEmblemSearch(t)) return true;
+  if (koField(t)) return true;
   const ds = t.dataset || {};
   if (ds.field && S.draft) { if (ds.field !== 'draw') { S.draft[ds.field] = t.value; touch(); } return true; }
   if (ds.ev && S.draft && S.draft.event) { S.draft.event[ds.ev] = t.value; touch(); return true; }
   return false;
 }
 export function onChangeG(t) {
+  if (koField(t)) return true;
   const f = t.dataset && t.dataset.field;
   if (!f || !S.draft) return false;
   if (f === 'draw') { S.draft.draw = t.checked; touch(); H.rerenderKeep(); return true; }
@@ -862,6 +983,10 @@ export function settingsGameHtml(sec) {
   let h = '';
   if (sec === 'games') {
   h += '<div class="field"><span class="label">Start a game opens</span>' + seg('gamemode', [{ val: 'life', label: 'Life counter' }, { val: 'simple', label: 'Round counter only' }], st.gameMode || 'life') + '</div>';
+  h += '<div class="field"><span class="label">Rule 0 check</span>' + seg('rulezero', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.ruleZero === false ? 'off' : 'on') +
+    '<p class="muted" style="margin-top:6px"><small>Before a Commander game with an Archidekt deck, shows its Game Changers and combos so you can tell the table. Combos come from Commander Spellbook.</small></p></div>';
+  if (st.ruleZero !== false) h += '<div class="field"><span class="label">Combos to show</span>' + seg('rzcombos', [{ val: 'two', label: 'Two-card' }, { val: 'three', label: 'Two- and three-card' }], st.ruleZeroCombos === 'three' ? 'three' : 'two') +
+    '<p class="muted" style="margin-top:6px"><small>Only combos that need nothing else on the battlefield and do something infinite or win the game. Three-card lists can get long in combo decks.</small></p></div>';
   h += '<div class="field"><span class="label">Turn reminders</span>' + seg('reminders', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.reminders === false ? 'off' : 'on') +
     '<p class="muted" style="margin-top:6px"><small>Shows \u201Cdraw a card\u201D when the monarch passes the turn, \u201Cventure into the Undercity\u201D for the player with the initiative, and a rad counter reminder two seconds into the turn of anyone with rads.</small></p></div>';
   h += '<div class="field"><span class="label">Full screen</span>' + seg('fullscreen', [{ val: 'on', label: 'On' }, { val: 'off', label: 'Off' }], st.fullscreen === false ? 'off' : 'on') +
@@ -953,6 +1078,8 @@ export function onSettingsChange(t) {
 
 export function onSettingsSeg(name, val) {
   if (name === 'gamemode') { H.setSettings({ gameMode: val }); H.rerenderKeep(); return true; }
+  if (name === 'rulezero') { H.setSettings({ ruleZero: val === 'on' }); H.rerenderKeep(); return true; }
+  if (name === 'rzcombos') { H.setSettings({ ruleZeroCombos: val }); H.rerenderKeep(); return true; }
   if (name === 'reminders') { H.setSettings({ reminders: val === 'on' }); H.rerenderKeep(); return true; }
   if (name === 'fullscreen') {
     H.setSettings({ fullscreen: val === 'on' });
