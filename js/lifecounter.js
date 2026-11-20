@@ -79,7 +79,8 @@ function lcEnsure() {
   if (!L || L.n !== keys.length || L.seats.length !== keys.length || L.seats.some(k => keys.indexOf(k) === -1)) {
     L = d.life = { n: keys.length, start: startLife(), seats: keys.slice(), p: {}, hist: [], first: null, active: null, round: 1, turnAt: null, startAt: Date.now(), outCount: 0, over: false };
   }
-  if (d.firstKey && L.first !== d.firstKey && !L.hist.some(h => h.ty === 'turn')) {
+  // a new game waits on the Who's first? button (2.0.4), so seats can be rotated or the layout changed first
+  if (d.firstKey && !d.announceFirst && L.first !== d.firstKey && !L.hist.some(h => h.ty === 'turn')) {
     L.first = d.firstKey; L.active = d.firstKey; L.turnAt = Date.now();
   }
   keys.forEach(k => { if (!L.p[k]) L.p[k] = { life: L.start, poison: 0, rad: 0, cmd: {}, out: null }; });
@@ -299,6 +300,10 @@ function lcPass() {
 function lcPassNow() {
   const d = S.draft, L = d.life;
   const prev = L.active;
+  // what passing changes, so a mis-tap can be undone for a few seconds (2.0.4)
+  const P0 = prev && L.p[prev];
+  const undo = { at: Date.now(), prev: prev, round: L.round, turnAt: L.turnAt, turns: d.turns, time: P0 ? P0.time || 0 : 0, tturns: P0 ? P0.tturns || 0 : 0,
+    snap: L.snap ? JSON.parse(JSON.stringify(L.snap)) : null, histLen: L.hist.length };
   if (prev && L.p[prev]) { L.p[prev].time = (L.p[prev].time || 0) + (Date.now() - L.turnAt); L.p[prev].tturns = (L.p[prev].tturns || 0) + 1; }
   const order = L.seats, n = order.length, f = order.indexOf(L.first);
   let i = order.indexOf(L.active);
@@ -310,8 +315,23 @@ function lcPassNow() {
   L.active = order[i]; L.turnAt = Date.now(); d.turns = L.round;
   L.hist.push({ t: Date.now(), k: L.active, ty: 'turn', d: 0, v: L.round, src: '', r: L.round });
   L.turnId = (L.turnId || 0) + 1; lcSnap();
+  undo.to = L.active; L.lastPass = undo;
   H.touch(); lcUpdate();
   lcTurnReminders(prev);
+  setTimeout(() => { if (S.view === 'playing' && document.getElementById('lc')) lcUpdate(); }, 5100); // the Undo goes away
+}
+/** Takes back a pass made in the last few seconds: same player, same round, and their turn time carries on (2.0.4). */
+function lcUndoPass() {
+  const d = S.draft, L = d.life, u = L.lastPass;
+  if (!u || L.active !== u.to || Date.now() - u.at > 8000) return;
+  if (u.prev && L.p[u.prev]) { L.p[u.prev].time = u.time; L.p[u.prev].tturns = u.tturns; }
+  L.active = u.prev; L.round = u.round; L.turnAt = u.turnAt; d.turns = u.turns;
+  if (L.hist.length === u.histLen + 1 && L.hist[L.hist.length - 1].ty === 'turn') L.hist.pop();
+  if (u.snap) L.snap = u.snap;
+  L.turnId = (L.turnId || 0) + 1; L.lastPass = null;
+  lcAnimClear();
+  H.touch(); lcUpdate();
+  toast('Back to ' + lcInfo(u.prev).name);
 }
 
 /** Turns the life counter into results and opens the results screen. */
@@ -879,6 +899,7 @@ function lcHtml() {
       '<div class="lpi" data-rot="' + LC_ROT[pos] + '"><div class="art">' + imgs + '</div><div class="shade"></div><div class="lglow"></div>' +
       '<div class="zone minus" data-hold="' + k + '|life|-1"></div><div class="zone plus" data-hold="' + k + '|life|1"></div>' +
       '<span class="sign m">−</span><span class="sign p">+</span>' +
+      '<div class="lband" data-tband="' + k + '"></div>' +
       '<div class="lmarks" data-marks="' + k + '"></div><div class="lname">' + esc(info.name) + '</div>' +
       '<div class="lifev"><b data-life="' + k + '"></b><span class="delta" data-delta="' + k + '"></span></div>' +
       '<div class="lbadges" data-badges="' + k + '"></div>' +
@@ -890,21 +911,34 @@ function lcHtml() {
       '</div></div>';
   }).join('');
   return '<div class="lc" id="lc" style="grid-template-areas:' + lay.areas + ';grid-template-rows:' + lay.rows + ';grid-template-columns:' + lay.cols + '">' +
-    panels + '<div class="hub" id="hub"></div><div id="lcsheet"></div><div id="lcprompt"></div></div><div id="lcov"></div>';
+    panels + '<div class="hub" id="hub" data-mode=""></div><div class="hubpill" id="hubpill"></div><div id="lcsheet"></div><div id="lcprompt"></div></div><div id="lcov"></div>';
 }
 function lcSize() {
-  // Park the center hub in the gap above your panel so it never covers anyone's life total
-  const mine = document.querySelector('.lp[data-k="me"]'), hub = document.getElementById('hub');
-  lcPlaceHub();
+  // 2.0.4: the PASS button sits where the panels meet. Find that spot first, then give every panel it overlaps
+  // enough room at the top (its band) that the button never covers a life total.
+  const g = lcHubGeom();
   document.querySelectorAll('.lp').forEach(p => {
     const r = p.getBoundingClientRect(), i = p.firstElementChild, rot = +i.dataset.rot, side = Math.abs(rot) === 90;
     i.style.width = (side ? r.height : r.width) + 'px';
     i.style.height = (side ? r.width : r.height) + 'px';
     i.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
     const lw = side ? r.height : r.width, lh = side ? r.width : r.height;
-    // Every panel keeps the same band free at the top for the round counter, whether or not it's that player's turn,
-    // so the life total sits in the same spot no matter where the counter is.
-    const band = Math.round(Math.max(36, Math.min(54, lh * 0.18)));
+    // Every panel keeps the same band free at the top for the turn time and menu, whether or not it's that player's turn,
+    // so the life total sits in the same spot no matter whose turn it is.
+    let band = Math.round(Math.max(36, Math.min(54, lh * 0.18)));
+    // where the PASS button falls in this panel's own (unrotated) coordinates
+    delete i.dataset.bx0; delete i.dataset.bx1;
+    if (g) {
+      const t = rot * Math.PI / 180, sx = g.x - (r.left + r.width / 2), sy = g.y - (r.top + r.height / 2);
+      const lx = sx * Math.cos(t) + sy * Math.sin(t), ly = -sx * Math.sin(t) + sy * Math.cos(t);
+      const rr = g.d / 2 + 6; // the button plus its glow
+      const reach = ly + rr + lh / 2; // how far down from this panel's top the button reaches
+      if (reach > 0 && ly - rr < lh / 2 && Math.abs(lx) < lw / 2 + rr) {
+        // over the middle (where the life total is): grow the band to clear it
+        if (Math.abs(lx) < lw * 0.3 + rr) band = Math.max(band, Math.min(Math.round(reach + 4), Math.round(lh * 0.42)));
+        i.dataset.bx0 = Math.round(lw / 2 + lx - rr); i.dataset.bx1 = Math.round(lw / 2 + lx + rr);
+      }
+    }
     // and room at the bottom for the commander damage map (or the counters button outside Commander)
     const foot = isCmd() ? (side ? 72 : 108) : 64;
     i.style.setProperty('--hb', band + 'px'); i.style.setProperty('--bb', foot + 'px');
@@ -914,30 +948,133 @@ function lcSize() {
     i.classList.toggle('tight', lw < 320); // markers go icon-only when there's no room for their labels
     i.dataset.lw = Math.round(lw);
   });
-  lcPlaceHub();
+  const hub = document.getElementById('hub');
+  if (hub) hub.dataset.mode = ''; // redraw it at the new size
+  LC.bandKey = '';
+  lcRenderHub();
 }
-/** Puts the round counter, menu and Pass turn in the band at the top of the active player's panel, facing them, shrunk to fit. */
-function lcPlaceHub() {
-  const hub = document.getElementById('hub'), L = S.draft && S.draft.life;
+/**
+ * Where the PASS button goes (2.0.4): the point where the most panels meet. Ties go to the one nearest the middle
+ * of the screen, then to the one nearest your panel. Its size is about a fifth of the screen's shorter side.
+ */
+function lcHubGeom() {
+  const L = S.draft && S.draft.life, lc = document.getElementById('lc');
+  if (!L || !lc) return null;
+  const W = window.innerWidth, H = window.innerHeight, short = Math.min(W, H);
+  const d = Math.round(short < 600 ? Math.max(80, Math.min(96, short * 0.2)) : Math.max(96, Math.min(150, short * 0.2)));
+  const rects = [...document.querySelectorAll('.lp')].map(p => ({ k: p.dataset.k, r: p.getBoundingClientRect() }));
+  if (!rects.length) return null;
+  const pts = [];
+  rects.forEach(({ r }) => {
+    [[r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom],
+      [(r.left + r.right) / 2, r.top], [(r.left + r.right) / 2, r.bottom], [r.left, (r.top + r.bottom) / 2], [r.right, (r.top + r.bottom) / 2]].forEach(p => pts.push(p));
+  });
+  const pad = 8, me = rects.find(x => x.k === 'me'), mc = me ? [(me.r.left + me.r.right) / 2, (me.r.top + me.r.bottom) / 2] : [W / 2, H];
+  let best = null;
+  pts.forEach(([x0, y0]) => {
+    // nudge to the middle of the gap between panels, and keep the whole button on screen
+    const near = rects.filter(({ r }) => x0 >= r.left - pad && x0 <= r.right + pad && y0 >= r.top - pad && y0 <= r.bottom + pad);
+    if (near.length < 2) return;
+    if (x0 < d / 2 || x0 > W - d / 2 || y0 < d / 2 || y0 > H - d / 2) return;
+    const dc = Math.hypot(x0 - W / 2, y0 - H / 2), dm = Math.hypot(x0 - mc[0], y0 - mc[1]);
+    const c = { n: near.length, dc: Math.round(dc), dm: dm, x: x0, y: y0 };
+    if (!best || c.n > best.n || (c.n === best.n && (c.dc < best.dc || (c.dc === best.dc && c.dm < best.dm)))) best = c;
+  });
+  if (!best) best = { x: W / 2, y: H / 2 };
+  // snap into the gap itself: the middle of the gap lines around the point
+  const snap = (v, edges) => { const e = edges.filter(x => Math.abs(x - v) <= pad * 2); return e.length ? (Math.min(...e) + Math.max(...e)) / 2 : v; };
+  const xs = [], ys = [];
+  rects.forEach(({ r }) => { xs.push(r.left, r.right); ys.push(r.top, r.bottom); });
+  LC.hubG = { x: snap(best.x, xs), y: snap(best.y, ys), d: d };
+  return LC.hubG;
+}
+/** The way a player faces, as a turn that's never more than half a circle from the last one (so it never spins the long way round). */
+function nearAngle(prev, a) { if (prev == null) return a; while (a - prev > 180) a -= 360; while (prev - a > 180) a += 360; return a; }
+/**
+ * Draws the PASS button (2.0.4): Who's first? before the game, PASS with the round during it, nothing once it's over.
+ * Its words face the player whose turn it is, and the notch points at them.
+ */
+function lcRenderHub() {
+  const hub = document.getElementById('hub'), pill = document.getElementById('hubpill'), L = S.draft && S.draft.life;
   if (!hub || !L) return;
-  const k = LC.spinning || L.first == null || L.over ? null : L.active;
-  const panel = k && document.querySelector('.lp[data-k="' + k + '"]');
-  hub.classList.remove('stack');
-  const hw = hub.offsetWidth, hh = hub.offsetHeight;
-  if (!panel) {
-    const sc = Math.min(1, (window.innerWidth - 16) / hw);
-    hub.style.left = '50%'; hub.style.top = '50%'; hub.style.transform = 'translate(-50%,-50%) scale(' + sc + ')';
-    return;
+  const g = LC.hubG || lcHubGeom();
+  const mode = L.over || LC.rotating || LC.swap !== null ? 'off' : (LC.spinning ? 'spin' : L.first == null ? 'pick' : 'play');
+  if (hub.dataset.mode !== mode) {
+    hub.dataset.mode = mode;
+    hub.innerHTML = mode === 'off' ? '' : mode === 'play'
+      ? '<button class="pbtn" data-lc="pass" aria-label="Pass turn"><span class="notch" aria-hidden="true"></span><span class="ptxt"><b>PASS</b><small>Round</small><i data-rnd></i></span></button>'
+      : '<button class="pbtn pick" data-lc="pick"' + (mode === 'spin' ? ' disabled' : '') + '><span class="ptxt"><b>' + (mode === 'spin' ? 'Picking\u2026' : 'Who\u2019s first?') + '</b></span></button>';
+    pill.innerHTML = mode === 'pick' ? '<button data-lc="rotate">Rotate seats</button><button data-lc="layout">Change layout</button>' : '';
   }
-  const r = panel.getBoundingClientRect(), rot = lcRot(k), side = Math.abs(rot) === 90;
-  const lpi = panel.firstElementChild, band = +lpi.dataset.band || 44;
-  const localW = side ? r.height : r.width, localH = side ? r.width : r.height;
-  const sc = Math.min(1, band / hh, (localW - 14) / hw);
-  // the band's center, in the panel's own (unrotated) coordinates, then turned to match the panel on screen
-  const dy = -localH / 2 + 4 + band / 2, t = rot * Math.PI / 180;
-  const x = r.left + r.width / 2 - dy * Math.sin(t), y = r.top + r.height / 2 + dy * Math.cos(t);
-  hub.style.left = x + 'px'; hub.style.top = y + 'px';
-  hub.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg) scale(' + sc.toFixed(3) + ')';
+  hub.style.display = mode === 'off' ? 'none' : '';
+  pill.style.display = mode === 'pick' ? '' : 'none';
+  if (mode === 'off' || !g) return;
+  hub.style.left = g.x + 'px'; hub.style.top = g.y + 'px'; hub.style.setProperty('--pd', g.d + 'px');
+  const rn = hub.querySelector('[data-rnd]');
+  if (rn) rn.textContent = L.round;
+  // which way the words face: toward the player whose turn it is (you, before the game starts)
+  const who = mode === 'play' ? L.active : 'me';
+  const face = nearAngle(LC.faceA, lcRot(L.seats.indexOf(who) !== -1 ? who : L.seats[0]));
+  LC.faceA = face;
+  const tx = hub.querySelector('.ptxt');
+  if (tx) tx.style.transform = 'rotate(' + face + 'deg)';
+  const notch = hub.querySelector('.notch'), panel = mode === 'play' && document.querySelector('.lp[data-k="' + L.active + '"]');
+  if (notch && panel) {
+    const r = panel.getBoundingClientRect();
+    const a = nearAngle(LC.notchA, Math.atan2(r.top + r.height / 2 - g.y, r.left + r.width / 2 - g.x) * 180 / Math.PI);
+    LC.notchA = a;
+    notch.style.transform = 'rotate(' + a + 'deg)';
+  }
+  if (mode === 'pick') {
+    // the Rotate seats and Change layout pill, just past the button on your side
+    const rot = lcRot('me'), t = rot * Math.PI / 180, off = g.d / 2 + 30;
+    pill.style.left = (g.x - off * Math.sin(t)) + 'px'; pill.style.top = (g.y + off * Math.cos(t)) + 'px';
+    pill.style.transform = 'translate(-50%,-50%) rotate(' + rot + 'deg)';
+  }
+}
+/**
+ * The band at the top of a panel (2.0.4). The player whose turn it is gets the menu (in the corner on their left, or
+ * their right if the PASS button is there) and their turn time. Before the game and after it ends, the menu is on your panel.
+ * Right after a pass, the player who passed gets "Passed to Megan · Undo" for a few seconds.
+ */
+function lcRenderBands(now) {
+  const L = S.draft.life, playing = L.first != null && !L.over && !LC.spinning;
+  const lp = L.lastPass && now - L.lastPass.at < 5000 && L.active === L.lastPass.to ? L.lastPass : null;
+  const key = [L.active, playing, L.over, L.first, lp ? lp.at : 0, LC.rotating, LC.swap].join('|');
+  if (LC.bandKey === key) { lcBandTimes(now); return; }
+  LC.bandKey = key;
+  document.querySelectorAll('[data-tband]').forEach(el => {
+    const k = el.dataset.tband, i = el.parentElement, lw = +i.dataset.lw || 300, band = +i.dataset.band || 44;
+    const menu = !LC.rotating && LC.swap === null && (playing ? k === L.active : k === 'me');
+    const undo = lp && lp.prev === k;
+    if (!menu && !undo) { el.innerHTML = ''; return; }
+    // the stretches of the band the PASS button leaves free
+    const x0 = i.dataset.bx0 != null ? +i.dataset.bx0 : null, x1 = +i.dataset.bx1;
+    let free = [[8, lw - 8]];
+    if (x0 != null) free = [[8, Math.max(8, x0)], [Math.min(lw - 8, x1), lw - 8]].filter(f => f[1] - f[0] > 0);
+    const ms = Math.round(Math.max(30, Math.min(42, band - 8)));
+    let h = '';
+    if (menu) {
+      const left = free.find(f => f[0] === 8 && f[1] - f[0] >= ms + 4), right = free.find(f => f[1] === lw - 8 && f[1] - f[0] >= ms + 4);
+      const at = left ? 8 : right ? lw - 8 - ms : 8;
+      h += '<button class="bmenu" data-lc="menu" data-k="' + k + '" aria-label="Game menu" style="left:' + at + 'px;width:' + ms + 'px;height:' + ms + 'px">\u2261</button>';
+      free = free.map(f => (f[0] <= at && at < f[1] ? (at === 8 ? [at + ms + 6, f[1]] : [f[0], at - 6]) : f)).filter(f => f[1] - f[0] > 0);
+    }
+    const widest = free.slice().sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0];
+    if (widest) {
+      const st = 'left:' + widest[0] + 'px;width:' + (widest[1] - widest[0]) + 'px';
+      // a narrow stretch gets the two-line version
+      if (undo) h += '<div class="bslot" style="' + st + '"><button class="bundo' + (widest[1] - widest[0] < 190 ? ' compact' : '') + '" data-lc="undopass"><span>Passed to ' + esc(lcInfo(lp.to).name) + '</span><b>Undo</b></button></div>';
+      else if (playing) h += '<div class="bslot" style="' + st + '"><span class="btime" data-tt></span></div>';
+    }
+    el.innerHTML = h;
+  });
+  lcBandTimes(now);
+}
+function lcBandTimes(now) {
+  const L = S.draft.life;
+  const gn = S.draft.bo3 && L.seats.length === 2 ? 'Game ' + (((S.draft.match && S.draft.match.games.length) || 0) + 1) + ' \u00b7 ' : '';
+  document.querySelectorAll('[data-tband] [data-tt]').forEach(el => { el.textContent = gn + mmss(now - L.turnAt); });
 }
 function lcUpdate() {
   if (S.view !== 'playing' || !document.getElementById('lc')) return;
@@ -993,24 +1130,8 @@ function lcUpdate() {
     panel.classList.toggle('justdied', !!(P.out && P.out.at && now - P.out.at < 1800));
   });
   document.querySelectorAll('[data-v]').forEach(el => { const p = el.dataset.v.split('|'); el.textContent = lcValue(p[0], p[1], p[2]); });
-  const hub = document.getElementById('hub');
-  if (hub) {
-    const want = L.first == null ? 'pick' : 'play';
-    if (hub.dataset.mode !== want) {
-      hub.dataset.mode = want;
-      hub.innerHTML = want === 'pick'
-        ? '<button class="menu" data-lc="menu" aria-label="Menu">≡</button><button class="pass" data-lc="pick">Pick first player</button>'
-        : '<div class="rnd"><b data-rnd></b><small data-tt></small></div><button class="menu" data-lc="menu" aria-label="Menu">≡</button><button class="pass" data-lc="pass">Pass turn</button>';
-      lcPlaceHub(); // its width changed
-    }
-    if (want === 'play') {
-      hub.querySelector('[data-rnd]').textContent = 'Round ' + L.round;
-      const gn = S.draft.bo3 && L.seats.length === 2 ? 'Game ' + (((S.draft.match && S.draft.match.games.length) || 0) + 1) + ', turn ' : 'Turn ';
-      hub.querySelector('[data-tt]').textContent = gn + mmss(now - L.turnAt);
-    }
-    const at = String(LC.spinning ? '' : L.active);
-    if (hub.dataset.at !== at) { hub.dataset.at = at; lcPlaceHub(); }
-  }
+  lcRenderHub();
+  lcRenderBands(now);
 }
 function lcSheetHtml(k) {
   const L = S.draft.life, P = L.p[k], info = lcInfo(k), mode = LC.panel && LC.panel.k === k ? LC.panel.mode : null;
@@ -1209,7 +1330,7 @@ function lcRenderOverlays() {
   let h = '';
   if (LC.menu === 'menu') {
     const ul = lcUndoLabel();
-    h = '<div class="lcov"><div class="inner"><div class="top"><h2>Game menu</h2><button class="link" data-lc="closeov">Close</button></div>' +
+    h = '<div class="lcov"><div class="inner gm"><div class="top"><h2>Game menu</h2><button class="link" data-lc="closeov">Close</button></div>' +
       (ul ? '<button class="menuitem undo" data-lc="undo"><span>Undo</span><small>' + esc(ul) + '</small></button>' : '') +
       '<button class="menuitem" data-lc="rng">Flip coins or roll dice</button>' +
       '<button class="menuitem" data-lc="rngattack">Random attack</button>' +
@@ -1256,6 +1377,15 @@ function lcRenderOverlays() {
       '<span>Rotate seats<small>Turn order stays the same</small></span><button data-lc="rotcw" aria-label="Rotate clockwise">⟳</button>' +
       '<button class="done" data-lc="rotdone">Done</button></div>';
   }
+  // the game menu (and what it opens) faces whoever tapped it (2.0.4)
+  const faced = { menu: 1, rng: 1, layout: 1, hist: 1, notes: 1 };
+  const fk = LC.menuFor && L.seats.indexOf(LC.menuFor) !== -1 ? LC.menuFor : null;
+  const frot = fk && faced[LC.menu] ? lcRot(fk) : 0;
+  if (frot && h.indexOf('<div class="lcov">') === 0) {
+    const side = Math.abs(frot) === 90, W = window.innerWidth, Hh = window.innerHeight;
+    h = '<div class="lcov turned"><div class="lcovrot" style="width:' + (side ? Hh : W) + 'px;height:' + (side ? W : Hh) + 'px;transform:translate(-50%,-50%) rotate(' + frot + 'deg)">' +
+      h.slice('<div class="lcov">'.length) + '</div>';
+  }
   el.innerHTML = h;
   const sb = document.getElementById('swapbar');
   if (LC.swap !== null && !sb) document.getElementById('lc').insertAdjacentHTML('beforeend', '<div class="swapbar" id="swapbar">Tap two players to swap <button data-lc="swapdone">Done</button></div>');
@@ -1263,7 +1393,6 @@ function lcRenderOverlays() {
 }
 function lcMount() {
   lcSize(); lcRenderSheets(); lcUpdate(); lcRenderOverlays(); lcRenderPrompt();
-  if (S.draft.announceFirst) { S.draft.announceFirst = false; H.touch(); setTimeout(() => lcPickFirst(S.draft.firstKey), 350); }
   clearInterval(LC.timer);
   LC.timer = setInterval(lcUpdate, 1000);
 }
@@ -1350,14 +1479,18 @@ function lcAction(act, el) {
       L.outCount++; L.p[k].out = { order: L.outCount, cause: 'manual', by: '', how: 'Concession', manual: true, at: Date.now(), r: L.round }; lcRollLine(k); lcDesigOnOut(k);
       LC.panel = { k: k, mode: 'out' }; lcCheckOver(); H.touch(); lcRenderSheets(); lcUpdate(); return lcRenderOverlays();
     case 'revive': L.p[k].hold = true; lcRevive(k); H.touch(); lcRenderSheets(); lcRenderOverlays(); return lcUpdate();
-    case 'pick': if (S.draft.life.hist.some(h => h.ty === 'turn') && !confirm('Pick a new first player and restart the round count?')) return; return lcPickFirst();
+    case 'pick':
+      if (d.announceFirst) { d.announceFirst = false; H.touch(); return lcPickFirst(); }
+      if (S.draft.life.hist.some(h => h.ty === 'turn') && !confirm('Pick a new first player and restart the round count?')) return;
+      return lcPickFirst();
     case 'pass': return lcPass();
-    case 'menu': LC.menu = 'menu'; return lcRenderOverlays();
-    case 'closeov': LC.menu = null; return lcRenderOverlays();
+    case 'undopass': return lcUndoPass();
+    case 'menu': if (k) LC.menuFor = k; LC.menu = 'menu'; return lcRenderOverlays();
+    case 'closeov': LC.menu = null; LC.menuFor = null; return lcRenderOverlays();
     case 'hist': LC.menu = 'hist'; return lcRenderOverlays();
     case 'layout': LC.menu = 'layout'; return lcRenderOverlays();
-    case 'rotate': LC.menu = null; LC.panel = null; LC.rotating = true; lcRenderSheets(); return lcRenderOverlays();
-    case 'rotdone': LC.rotating = false; return lcRenderOverlays();
+    case 'rotate': LC.menu = null; LC.panel = null; LC.rotating = true; lcRenderSheets(); lcRenderOverlays(); return lcUpdate();
+    case 'rotdone': LC.rotating = false; lcRenderOverlays(); return lcUpdate();
     case 'rotcw': case 'rotccw': {
       const n = L.seats.length;
       L.seats = act === 'rotcw' ? [L.seats[n - 1]].concat(L.seats.slice(0, n - 1)) : L.seats.slice(1).concat([L.seats[0]]);
@@ -1419,7 +1552,7 @@ document.addEventListener('pointercancel', () => lcEndPress(false));
 document.addEventListener('contextmenu', e => { if (e.target.closest && e.target.closest('.lc')) e.preventDefault(); });
 window.addEventListener('resize', () => {
   if (S.view !== 'playing' || !document.getElementById('lc')) return;
-  lcSize(); lcPlaceHub();
+  lcSize();
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches('[data-emq]');
   if (!typing) { lcRenderSheets(); lcRenderPrompt(); }
 });

@@ -1,7 +1,7 @@
 // Help screens (Phase 6): the privacy note, and how to put the app on a home screen (for friends you invite).
 import { S, H } from './state.js';
 import { esc } from './util.js';
-import { SUPPORT_URL } from './config.js';
+import { SUPPORT_URL, APP_VERSION, FEEDBACK_URL, FEEDBACK_VERSION_ENTRY, FEEDBACK_DEVICE_ENTRY } from './config.js';
 
 const top = (back, label, title) => '<header class="top"><button class="link back" data-act="' + back + '">\u2039 ' + label + '</button><h3>' + esc(title) + '</h3><span style="width:60px"></span></header>';
 const backTo = () => ['navback', 'Back'];
@@ -19,6 +19,7 @@ export function viewPrivacy() {
     '<li><b>Joey</b>, who runs the app, can see a shared game\u2019s edit history and lock it, but only for games he played in.</li><li><b>The app\u2019s owner</b> can see account emails and game records to run and support the app.</li></ul>' +
     '<h2>Other services</h2><p>Decks come from Archidekt (only public decks, through a small helper Joey runs), and card names and art from Scryfall.</p>' +
     '<h2>Removing your data</h2><p>Settings > About and account > <b>Delete my account</b> erases your profile, friend code, decks, settings and the games only you played, and takes you out of everything else. Games you played with others stay in their records, with your seat as a typed-in name. This can\u2019t be undone.</p>' +
+    '<p>Joey keeps private weekly backups of the app\u2019s data in case something goes wrong. After you delete your account, your data stays in those backups for up to about 3 months, until they\u2019re cleared out. They\u2019re never shared or used for anything else.</p>' +
     '<p class="muted"><small>The Salt Mine is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. \u00a9Wizards of the Coast LLC.</small></p></div>';
 }
 
@@ -65,4 +66,37 @@ export function viewSupport() {
     '<p>If it\u2019s made your game nights better, a tip helps with the time it takes and any costs as more people join.</p>' +
     '<a class="btn primary" href="' + esc(SUPPORT_URL) + '" target="_blank" rel="noopener">Tip with PayPal</a>' +
     '<p class="muted"><small>Opens PayPal. Tips don\u2019t unlock anything. Thank you either way.</small></p></div>';
+}
+
+/* ---------- Feedback (2.0.4): a Google Form with the app version and device filled in ---------- */
+export const hasFeedback = () => !!FEEDBACK_URL;
+/** A short description of this device, e.g. "iPhone, iOS 18.4, home screen app, 390x844". */
+export function deviceLabel() {
+  const ua = navigator.userAgent || '';
+  const iPad = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let os = 'Other';
+  let m;
+  if (/iPhone/.test(ua)) os = 'iPhone';
+  else if (iPad) os = 'iPad';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/Windows/.test(ua)) os = 'Windows';
+  else if (/Mac OS X/.test(ua)) os = 'Mac';
+  else if (/CrOS/.test(ua)) os = 'Chromebook';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  if ((os === 'iPhone' || os === 'iPad') && (m = ua.match(/OS (\d+)[_.](\d+)/))) os += ', iOS ' + m[1] + '.' + m[2];
+  else if (os === 'Android' && (m = ua.match(/Android (\d+(?:\.\d+)?)/))) os += ' ' + m[1];
+  const browser = /EdgA?\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /CriOS|Chrome/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'browser';
+  const installed = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  return os + ', ' + (installed ? 'home screen app' : browser) + ', ' + window.innerWidth + 'x' + window.innerHeight;
+}
+export function feedbackUrl() {
+  if (!FEEDBACK_URL) return '';
+  const q = ['usp=pp_url'];
+  if (FEEDBACK_VERSION_ENTRY) q.push('entry.' + FEEDBACK_VERSION_ENTRY + '=' + encodeURIComponent(APP_VERSION));
+  if (FEEDBACK_DEVICE_ENTRY) q.push('entry.' + FEEDBACK_DEVICE_ENTRY + '=' + encodeURIComponent(deviceLabel()));
+  return FEEDBACK_URL + (FEEDBACK_URL.indexOf('?') < 0 ? '?' : '&') + q.join('&');
+}
+export function openFeedback() {
+  const u = feedbackUrl();
+  if (u) window.open(u, '_blank', 'noopener');
 }

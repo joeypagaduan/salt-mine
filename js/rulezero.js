@@ -6,7 +6,7 @@ import { RELAY_URL } from './config.js';
 import { S, uid } from './state.js';
 import { esc, toast } from './util.js';
 import * as D from './data.js';
-import { deckJson, deckCardLists, gameChangers } from './archidekt.js';
+import { deckJson, deckCardLists, gameChangers, gcHash, currentGcHash } from './archidekt.js';
 
 const CSB = 'https://backend.commanderspellbook.com/find-my-combos?limit=100';
 const CSB_BRACKET = 'https://backend.commanderspellbook.com/estimate-bracket';
@@ -21,6 +21,18 @@ function timeout(p, ms) {
 
 /** Which saved check is current: bumped when what gets saved changes, so older saves are checked again. */
 const RZ_VERSION = 3; // 3 (2.0.3): combo links and mass land denial
+/** A saved check older than this is checked again, to catch changes on Commander Spellbook (2.0.4). */
+const RZ_MAX_AGE = 30 * 864e5;
+/**
+ * Whether a saved check is out of date even though the deck didn't change (2.0.4): it's more than 30 days old,
+ * or the Game Changers list changed since (a check from before 2.0.4 has no fingerprint, so it counts as changed).
+ */
+export function rzStale(rz) {
+  if (!rz) return true;
+  if (!rz.at || Date.now() - rz.at > RZ_MAX_AGE) return true;
+  const now = currentGcHash();
+  return !!now && rz.gch !== now;
+}
 
 /**
  * The two- and three-card combos in a Commander Spellbook answer: two or three cards, nothing else needed on the
@@ -82,7 +94,7 @@ export async function checkDeck(deck, force, fresh) {
   try { j = await timeout(deckJson(deck.id), 15000); }
   catch (e) { return saved ? Object.assign({}, saved, { stale: true }) : { failed: true }; }
   const edited = j.updatedAt || '';
-  if (!force && saved && saved.v === RZ_VERSION && saved.comboOk && edited && saved.for === edited) return saved;
+  if (!force && saved && saved.v === RZ_VERSION && saved.comboOk && edited && saved.for === edited && !rzStale(saved)) return saved;
   const lists = deckCardLists(j);
   let gcSet = null;
   try { gcSet = await timeout(gameChangers(), 15000); } catch (e) { gcSet = null; }
@@ -94,6 +106,9 @@ export async function checkDeck(deck, force, fresh) {
   const mldOk = mld !== null;
   if (!mldOk) mld = same && saved.mld ? saved.mld : [];
   const rz = { v: RZ_VERSION, for: edited, at: Date.now(), gc: gc, gcOk: !!gcSet, mld: mld, mldOk: mldOk, combos: combos, comboOk: comboOk };
+  // which Game Changers list this check used; kept from the last good check if Scryfall didn't answer this time
+  const gch = gcSet ? gcHash(gcSet) : (saved && saved.gch) || '';
+  if (gch) rz.gch = gch;
   deck.rz = rz;
   D.saveDeck(uid(), { id: deck.id, rz: rz }).catch(() => {});
   return rz;
@@ -202,11 +217,11 @@ export function wantsRuleZero(d, deck) {
 }
 
 /* ---------- checking decks in the background (2.0.3) ---------- */
-/** Whether a deck's saved check is missing, from an older version, incomplete, or from before its last Archidekt edit. */
+/** Whether a deck's saved check is missing, from an older version, incomplete, from before its last Archidekt edit, or stale (2.0.4). */
 export function needsCheck(deck) {
   const rz = deck.rz;
   return deck.source === 'archidekt' && deck.status === 'ok' &&
-    (!rz || rz.v !== RZ_VERSION || !rz.comboOk || (!!deck.archUpdated && rz.for !== deck.archUpdated));
+    (!rz || rz.v !== RZ_VERSION || !rz.comboOk || (!!deck.archUpdated && rz.for !== deck.archUpdated) || rzStale(rz));
 }
 /** The small banner at the top while decks update. null hides it; done shows a short "updated" note first. */
 export function banner(text, done) {
@@ -228,9 +243,11 @@ let sweeping = false;
 export async function sweepDecks(decks, opts) {
   opts = opts || {};
   if (sweeping || S.settings.ruleZero === false || !navigator.onLine) return 0;
-  const todo = (decks || []).filter(needsCheck);
-  if (!todo.length) { if (opts.doneText) banner(null, opts.doneText); return 0; }
+  // fetch this week's Game Changers list first (kept a week), so a changed list marks every deck for a recheck
   sweeping = true;
+  try { await timeout(gameChangers(), 15000); } catch (e) { /* checked against the list this device already has */ }
+  const todo = (decks || []).filter(needsCheck);
+  if (!todo.length) { sweeping = false; if (opts.doneText) banner(null, opts.doneText); return 0; }
   const total = todo.length; let done = 0;
   const show = () => banner('Checking your decks for Rule 0\u2026 ' + done + ' of ' + total);
   show();

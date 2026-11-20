@@ -2,8 +2,18 @@
 // Each change is tagged Added, Changed, Fixed or Removed. Add the next version at the top of VERSIONS.
 import { esc } from './util.js';
 import { APP_VERSION } from './config.js';
+import { hasFeedback } from './help.js';
 
 export const VERSIONS = [
+  { v: '2.0.4', title: 'A new PASS button, feedback and fresher Rule 0 checks', items: [
+    ['Changed', 'Passing the turn is now a big red PASS button where the players\u2019 sections meet, with the round under it. It turns to face whoever\u2019s turn it is, and its notch points at them.'],
+    ['Changed', 'Whose turn it is shows as a white border on that player\u2019s section. Their turn time and the game menu (\u2261) sit at the top of their section, facing them, and the menu opens toward them.'],
+    ['Added', 'Passed by mistake? For a few seconds, the player who passed can tap Undo to take it back.'],
+    ['Changed', 'A new game waits for you to tap Who\u2019s first?, so you can rotate seats or change the layout before anyone goes.'],
+    ['Changed', 'The PASS button gently pulses. It stays still if your phone is set to reduce motion.'],
+    ['Added', 'Report a problem or send feedback, in Settings > About and account.'],
+    ['Changed', 'Rule 0 checks run again every 30 days, and whenever the official Game Changers list changes, even if the deck didn\u2019t.'],
+    ['Changed', 'The privacy note explains how long deleted accounts stay in the app\u2019s private backups.']] },
   { v: '2.0.3', title: 'Rule 0 upgrades and your games as a spreadsheet', items: [
     ['Added', 'Rule 0 check now counts mass land denial too (from Commander Spellbook), and always shows every count, even 0. Three-card combos show when Combos to show includes them.'],
     ['Added', 'Each combo in the Rule 0 check links to it on Commander Spellbook.'],
@@ -87,7 +97,8 @@ export function whatsNewHtml() {
   const cur = VERSIONS.find(x => x.v === APP_VERSION) || VERSIONS[0];
   return '<div class="panel"><p style="margin:0"><b>Version ' + esc(cur.v) + '</b> <span class="muted">' + esc(cur.title) + '</span></p>' + itemsHtml(cur.items) + '</div>' +
     '<button class="btn" data-act="changelog">Earlier versions</button>' +
-    '<p class="muted supline">Enjoying the updates? <button class="link" data-act="support">Support the app</button></p>';
+    '<p class="muted supline">Enjoying the updates? <button class="link" data-act="support">Support the app</button></p>' +
+    (hasFeedback() ? '<p class="muted supline">Found a problem or have an idea? <button class="link" data-act="feedback">Send feedback</button></p>' : '');
 }
 export function viewChangelog() {
   let h = '<header class="top"><button class="link back" data-act="navback">\u2039 Back</button><h3>All versions</h3><span style="width:60px"></span></header>';

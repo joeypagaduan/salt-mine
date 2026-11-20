@@ -358,7 +358,7 @@ const SET_SECS = [
   { id: 'formats', title: 'Formats', sub: 'What you can pick besides Commander', icon: 'grid' },
   { id: 'data', title: 'Data', sub: 'Import from classic, commander list', icon: 'db' },
   { id: 'whatsnew', title: 'What\u2019s new', sub: 'Version ' + APP_VERSION, icon: 'star' },
-  { id: 'about', title: 'About and account', short: 'Account', sub: 'Privacy, install, sign out, delete account', icon: 'info' }
+  { id: 'about', title: 'About and account', short: 'Account', sub: 'Privacy, feedback, sign out, delete account', icon: 'info' }
 ];
 const SICON = {
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
@@ -370,7 +370,8 @@ const SICON = {
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6"/>',
   coffee: '<path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M17 11h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M8 3v3M12 3v3"/>',
-  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>'
+  phone: '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4V5z"/><path d="M8 9h8M8 12h5"/>'
 };
 const sIcon = k => '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (SICON[k] || '') + '</svg>';
 const wide = () => window.matchMedia('(min-width: 760px)').matches;
@@ -451,6 +452,7 @@ function setSectionHtml(sec) {
       '<p class="muted" style="margin:4px 0 0">Signed in as ' + esc(S.user.email) + '</p></div>' +
       '<div class="setlinks">' + setRow('privacy', '', 'info', 'Privacy', 'What\u2019s saved and who can see it') +
       setRow('install', '', 'phone', 'Add it to a home screen', 'For iPhone, iPad and Android') +
+      (HP.hasFeedback() ? setRow('feedback', '', 'chat', 'Report a problem or send feedback', 'Opens a short form') : '') +
       setRow('support', '', 'coffee', 'Support the app', 'Optional tips, nothing locked') + '</div>' +
       '<button class="btn" style="margin-top:14px" data-act="signout">Sign out</button>' +
       '<h2 style="margin-top:28px">Delete your account</h2><p class="muted" style="margin-top:0">Removes your profile, decks, settings and games from The Salt Mine. This can\u2019t be undone.</p>' +
@@ -554,6 +556,7 @@ app.addEventListener('click', async e => {
     case 'navback': return goBack();
     case 'changelog': return go('changelog');
     case 'support': return HP.openSupport();
+    case 'feedback': return HP.openFeedback();
     case 'home': case 'decks': case 'settings': S.form = null; S.sheetDeck = null; return go(act);
     case 'refresh': return doRefresh();
     case 'reloadall': {

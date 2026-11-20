@@ -137,6 +137,20 @@ export function guessFolderType(name) {
   return [String(name), false];
 }
 
+/** A short fingerprint of a Game Changers list, so a saved Rule 0 check can tell when the list changed (2.0.4). */
+export function gcHash(list) {
+  const names = Object.keys(list || {}).sort();
+  if (!names.length) return '';
+  let h = 5381;
+  const s = names.join('|');
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return names.length + '-' + h.toString(36);
+}
+/** The fingerprint of the Game Changers list this device last fetched, or '' if it hasn't fetched one. */
+export function currentGcHash() {
+  const c = store('smb_gc');
+  return c && c.list ? gcHash(c.list) : '';
+}
 /** The official Game Changers list from Scryfall, kept for a week. Used to estimate brackets. */
 export async function gameChangers() {
   const c = store('smb_gc');
